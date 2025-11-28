@@ -17,6 +17,6 @@ function Script()
 
 end
 
-if game.PlaceId == 168556275 then
+if game.PlaceId == 6701277882 then
     Script()
 end
