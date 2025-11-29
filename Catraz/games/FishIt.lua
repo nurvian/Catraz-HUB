@@ -170,27 +170,41 @@ AutoSellSection:NewToggle({
 })
 
 --========================================================--
---                    UI CONTROL
+--                    UI CONTROL (DIPERBAIKI)
 --========================================================--
 
 local UIControl = MiscTab:NewSection({
-	Title = "UI Control",
-	Icon = "monitor",
-	Position = "Left"
+    Title = "UI Control",
+    Icon = "monitor",
+    Position = "Left"
 })
 
 UIControl:NewButton({
-	Title = "Minimize UI",
-	Callback = function()
-		Windows:Toggle()
-	end,
+    Title = "Minimize UI",
+    Callback = function()
+        local success, err = pcall(function()
+            Windows:Toggle()
+        end)
+        if not success then
+            print("ERROR MINIMIZE:", err)
+        else
+            print("UI Diminimalkan")
+        end
+    end,
 })
 
 UIControl:NewButton({
-	Title = "Close UI",
-	Callback = function()
-		Windows:Destroy()
-	end,
+    Title = "Close UI",
+    Callback = function()
+        local success, err = pcall(function()
+            Windows:Destroy()
+        end)
+        if not success then
+            print("ERROR CLOSE:", err)
+        else
+            print("UI Dihancurkan")
+        end
+    end,
 })
 
 --========================================================--
