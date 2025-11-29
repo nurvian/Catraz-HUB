@@ -1,55 +1,122 @@
-local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
-local Window = Rayfield:CreateWindow({
-   Name = "Catraz Hub",
-   Icon = "snail", -- Icon in Topbar. Can use Lucide Icons (string) or Roblox Image (number). 0 to use no icon (default).
-   LoadingTitle = "Catraz Hub is Loading . . .",
-   LoadingSubtitle = "by alcatraz",
-   ShowText = "Catraz Hub", -- for mobile users to unhide rayfield, change if you'd like
-   Theme = "Ocean", -- Check https://docs.sirius.menu/rayfield/configuration/themes
-
-   ToggleUIKeybind = "K", -- The keybind to toggle the UI visibility (string like "K" or Enum.KeyCode)
-
-   DisableRayfieldPrompts = false,
-   DisableBuildWarnings = false, -- Prevents Rayfield from warning when the script has a version mismatch with the interface
-
-   ConfigurationSaving = {
-      Enabled = true,
-      FolderName = nil, -- Create a custom folder for your hub/game
-      FileName = "Big Hub"
-   },
-
-   Discord = {
-      Enabled = true, -- Prompt the user to join your Discord server if their executor supports it
-      Invite = "j3E7YXMHUZ", -- The Discord invite code, do not include discord.gg/. E.g. discord.gg/ ABCD would be ABCD
-      RememberJoins = true -- Set this to false to make them join the discord every time they load it up
-   },
-
-   KeySystem = false, -- Set this to true to use our key system
-   KeySettings = {
-      Title = "Untitled",
-      Subtitle = "Key System",
-      Note = "No method of obtaining the key is provided", -- Use this to tell the user how to get a key
-      FileName = "Key", -- It is recommended to use something unique as other scripts using Rayfield may overwrite your key file
-      SaveKey = true, -- The user's key will be saved, but if you change the key, they will be unable to use your script
-      GrabKeyFromSite = false, -- If this is true, set Key below to the RAW site you would like Rayfield to get the key from
-      Key = {"Hello"} -- List of keys that will be accepted by the system, can be RAW file links (pastebin, github etc) or simple strings ("hello","key22")
-   }
+local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
+WindUI:AddTheme({
+    Name = "My Theme", -- theme name
+    
+    
+    -- More Soon!
+    
+    Accent = Color3.fromHex("#18181b"),
+    Background = Color3.fromHex("#101010"), -- Accent
+    BackgroundTransparency = 0,
+    Outline = Color3.fromHex("#FFFFFF"),
+    Text = Color3.fromHex("#FFFFFF"),
+    Placeholder = Color3.fromHex("#7a7a7a"),
+    Button = Color3.fromHex("#52525b"),
+    Icon = Color3.fromHex("#a1a1aa"),
+    
+    Hover = Color3.fromHex("#FFFFFF"), -- Text
+    BackgroundTransparency = 0,
+    
+    WindowBackground = Color3.fromHex("101010") -- Background
+    WindowShadow = Color3.fromHex("000000"),
+    
+    DialogBackground = Color3.fromHex("#101010"), -- Background
+    DialogBackgroundTransparency = 0, -- BackgroundTransparency
+    DialogTitle = Color3.fromHex("#FFFFFF"), -- Text
+    DialogContent = Color3.fromHex("#FFFFFF"), -- Text
+    DialogIcon = Color3.fromHex("#a1a1aa"), -- Icon
+    
+    WindowTopbarButtonIcon = Color3.fromHex("a1a1aa"), -- Icon
+    WindowTopbarTitle = Color3.fromHex("FFFFFF"), -- Text
+    WindowTopbarAuthor = Color3.fromHex("FFFFFF"), -- Text
+    WindowTopbarIcon = Color3.fromHex("FFFFFF"), -- Text
+    
+    TabBackground = Color3.fromHex("#FFFFFF"), -- Text
+    TabTitle = Color3.fromHex("#FFFFFF"), -- Text
+    TabIcon = Color3.fromHex("a1a1aa"), -- Icon
+    
+    ElementBackground = Color3.fromHex("#FFFFFF"), -- Text
+    ElementTitle = Color3.fromHex("#FFFFFF"), -- Text
+    ElementDesc = Color3.fromHex("#FFFFFF"), -- Text
+    ElementIcon = Color3.fromHex("#a1a1aa"), -- Icon
+    
+    PopupBackground = Color3.fromHex("#101010"), -- Background
+    PopupBackgroundTransparency = 0, -- BackgroundTransparency
+    PopupTitle = Color3.fromHex("#FFFFFF"), -- Text
+    PopupContent = Color3.fromHex("#FFFFFF"), -- Text
+    PopupIcon = Color3.fromHex("#a1a1aa"), -- Icon
+    
 })
 
-local Tab = Window:CreateTab("Main", "house") -- Main Tab
-local TabShop = Window:CreateTab("Shop", "store") -- Tab Shop
-local TabPlayer = Window:CreateTab("Player", "person-standing") -- Plyaer Tab
-local TabTele = Window:CreateTab("Teleport", "map-pin") -- Teleport Tab
-local TabEvent = Window:CreateTab("Event", "calendar") -- Event Tab
-local TabQuest = Window:CreateTab("Quest", "scroll-text") -- Quest Tab
-local TabMisc = Window:CreateTab("Misc", "snail") -- Misc Tab
-
-
-
-
-
-
-
-
-
-Rayfield:LoadConfiguration()
+local Window = WindUI:CreateWindow({
+    Title = "Catraz Hub",
+    Icon = "snail", -- lucide icon
+    Author = "by alcatraz",
+    Folder = "Catraz Hub",
+    
+    -- ↓ This all is Optional. You can remove it.
+    Size = UDim2.fromOffset(580, 460),
+    MinSize = Vector2.new(560, 350),
+    MaxSize = Vector2.new(850, 560),
+    Transparent = true,
+    Theme = "Dark",
+    Resizable = true,
+    SideBarWidth = 200,
+    BackgroundImageTransparency = 0.42,
+    HideSearchBar = true,
+    ScrollBarEnabled = false,
+    
+    -- ↓ Optional. You can remove it.
+    --[[ You can set 'rbxassetid://' or video to Background.
+        'rbxassetid://':
+            Background = "rbxassetid://", -- rbxassetid
+        Video:
+            Background = "video:YOUR-RAW-LINK-TO-VIDEO.webm", -- video 
+    --]]
+    
+    -- ↓ Optional. You can remove it.
+    User = {
+        Enabled = true,
+        Anonymous = true,
+        Callback = function()
+            print("clicked")
+        end,
+    },
+    
+    --       remove this all, 
+    -- !  ↓  if you DON'T need the key system
+    KeySystem = { 
+        -- ↓ Optional. You can remove it.
+        Key = { "1234", "5678" },
+        
+        Note = "Key sistem in discord",
+        
+        -- ↓ Optional. You can remove it.
+        Thumbnail = {
+            Image = "rbxassetid://96408954450599",
+            Title = "Catraz Hub",
+        },
+        
+        -- ↓ Optional. You can remove it.
+        URL = "YOUR LINK TO GET KEY (Discord, Linkvertise, Pastebin, etc.)",
+        
+        -- ↓ Optional. You can remove it.
+        SaveKey = false, -- automatically save and load the key.
+        
+        -- ↓ Optional. You can remove it.
+        -- API = {} ← Services. Read about it below ↓
+    },
+})
+Window:EditOpenButton({
+    Title = "Open Catraz Hub",
+    Icon = "monitor",
+    CornerRadius = UDim.new(0,16),
+    StrokeThickness = 2,
+    Color = ColorSequence.new( -- gradient
+        Color3.fromHex("FF0F7B"), 
+        Color3.fromHex("F89B29")
+    ),
+    OnlyMobile = false,
+    Enabled = true,
+    Draggable = true,
+})
