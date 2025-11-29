@@ -2,6 +2,12 @@ local SugarLibrary = loadstring(game:HttpGetAsync(
     'https://raw.githubusercontent.com/Yomkav2/Sugar-UI/refs/heads/main/Source'
 ))();
 local Notification = SugarLibrary.Notification();
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Net = ReplicatedStorage:WaitForChild("Packages"):WaitForChild("_Index"):WaitForChild("sleitnick_net@0.2.0"):WaitForChild("net")
+local SellAllItems = Net:WaitForChild("RF/SellAllItems")
+
+-- Variabel untuk menyimpan koneksi loop agar bisa dihentikan
+local autoSellConnection = nil
 
 Notification.new({
 	Title = "Fish It game detected",
@@ -123,50 +129,49 @@ Section:NewToggle({
 })
 
 Section:NewToggle({
-	Title = "Skip Minigame Fishing",
-	Name = "ToggleSkipFish",
+	Title = "Auto Sell Items",
+	Name = "AutoSellToggle",
 	Default = false,
-	Callback = function(tr)
-		-- Variabel dan Fungsi Skip yang sudah kita buat sebelumnya
-		local ReplicatedStorage = game:GetService("ReplicatedStorage")
-		
-		-- Dapatkan Referensi Remote (sebaiknya diletakkan di luar callback untuk efisiensi)
-		local RF_Start = ReplicatedStorage:WaitForChild("Packages"):WaitForChild("_Index"):WaitForChild("sleitnick_net@0.2.0"):WaitForChild("net"):WaitForChild("RF/RequestFishingMinigameStarted")
-		local RE_Complete = ReplicatedStorage:WaitForChild("Packages"):WaitForChild("_Index"):WaitForChild("sleitnick_net@0.2.0"):WaitForChild("net"):WaitForChild("RE/FishingCompleted")
-
-		if tr == true then
-			-- ✅ Logic dijalankan saat Toggle diaktifkan (ON)
-
-			local args = {
-				-- Masukkan argumen posisi dan timestamp yang sesuai
-				-1.233184814453125,
-				0.8114499069302521,
-				os.time() 
-			}
-
-			print("Toggle ON: Mencoba melakukan skip memancing...")
-
-			-- Tahap 1: Memulai minigame (InvokeServer)
-			local startResult = RF_Start:InvokeServer(unpack(args))
+	Callback = function(isEnabled)
+		if isEnabled then
+			-- Jika toggle dihidupkan
+			print("Auto Sell Dihidupkan")
 			
-			-- Tahap 2: Waktu tunggu minimal
-			wait(0.1) 
-			
-			-- Tahap 3: Menyelesaikan/Menarik Kail (FireServer)
-			RE_Complete:FireServer()
-            
-            print("Fishing sequence completed/skipped. Result from start:", startResult)
+			-- Buat loop baru
+			autoSellConnection = task.spawn(function()
+				while true do
+					-- Periksa apakah toggle masih aktif. 
+					-- Sebenarnya tidak perlu di while true, tapi ini menjaga agar loop berhenti 
+					-- jika ada cara lain mematikan toggle (misalnya, jika game dihentikan).
+					if autoSellConnection == nil then break end 
 
+					-- Panggil fungsi InvokeServer
+					local success, result = pcall(function()
+						return SellAllItems:InvokeServer()
+					end)
+
+					if success then
+						-- print("Jual berhasil:", result)
+					else
+						print("Error saat menjual:", result)
+					end
+					
+					-- Tunggu sebentar sebelum menjual lagi (misalnya 1 detik)
+					task.wait(1) 
+				end
+			end)
 		else
-			-- ❌ Logic dijalankan saat Toggle dinonaktifkan (OFF)
-			print("Toggle OFF: Skip memancing dinonaktifkan.")
-            
-            -- Untuk fungsi yang hanya dijalankan sekali (seperti ini),
-            -- biasanya tidak ada aksi yang perlu dilakukan saat dinonaktifkan.
+			-- Jika toggle dimatikan
+			print("Auto Sell Dimatikan")
+			
+			-- Hentikan loop yang sedang berjalan
+			if autoSellConnection then
+				task.cancel(autoSellConnection)
+				autoSellConnection = nil
+			end
 		end
 	end,
 })
-
 --========================================================--
 --           AUTO FISHING SECTION (BARU, KOSONG)
 --========================================================--
