@@ -306,6 +306,42 @@ ConfigSection:NewButton({
 })
 
 --========================================================--
---                       DROPDOWN
+--                    UI CONTROL (Diperbaiki)
 --========================================================--
+
+local UIControl = MiscTab:NewSection({
+	Title = "UI Control",
+	Icon = "monitor",
+	Position = "Left"
+})
+
+UIControl:NewButton({
+	Title = "Minimize UI",
+	Callback = function()
+        -- Menggunakan pcall untuk menangani error saat Toggle() dipanggil
+        local success, err = pcall(function()
+            Windows:Toggle() 
+        end)
+        if success then
+            print("Action: Minimize/Toggle UI berhasil.")
+        else
+            print("ERROR MINIMIZE UI:", err)
+        end
+	end,
+})
+
+UIControl:NewButton({
+	Title = "Close UI (Destroy)",
+	Callback = function()
+        -- Menggunakan pcall untuk menangani error saat Destroy() dipanggil
+        local success, err = pcall(function()
+            Windows:Destroy() -- Ini akan menghapus window secara permanen
+        end)
+        if success then
+            print("Action: Destroy UI berhasil.")
+        else
+            print("ERROR DESTROY UI:", err)
+        end
+	end,
+})
 
