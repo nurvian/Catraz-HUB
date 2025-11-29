@@ -122,70 +122,6 @@ Section:NewToggle({
 	end,
 })
 
--- Definisikan layanan yang diperlukan
-local Players = game:GetService("Players")
-local LocalPlayer = Players.LocalPlayer
-local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-
--- ## 1. Definisikan Data Lokasi (Nama dan Koordinat)
-local TeleportLocations = {
-    -- Format: "Nama Tempat" = Vector3.new(X, Y, Z)
-    ["Fisherman Island"] = Vector3.new(35, 17, 2851),
-    ["Ancient Jungle"] = Vector3.new(1489, 7, -425),
-    ["Sacred Temple"] = Vector3.new(1478, -22, -611),
-    ["Ancuent Ruins"] = Vector3.new(6097, -586, 4665),
-	["Clasic Island"] = Vector3.new(1232, 10, 2843),
-	["Iron Cavern"] = Vector3.new(-8899, -582, 157),
-	["Iron Cafe"] = Vector3.new(-8642, -548, 161),
-	["Treasure Room"] = Vector3.new(-3600, -267, -1558),
-	["Sisyphus Statue"] = Vector3.new(-3693, -136, -1044),
-	["Crater Island"] = Vector3.new(975, 30, 4950),
-	["Kohana"] = Vector3.new(-635, 16, 595),
-	["Volcano Kohana"] = Vector3.new(-632, 55, 198),
-	["Second Enchant Room"] = Vector3.new(1480, 128, -590),
-	["Enchant Room"] = Vector3.new(3231, -1303, 1402),
-	["Coral Refs"] = Vector3.new(-2855, 47, 1997),
-	["Tropical Grove"] = Vector3.new(-2048, 6, 3657),
-}
-
--- Ambil nama-nama tempat untuk menu dropdown
-local DropdownData = {}
-for name, _ in pairs(TeleportLocations) do
-    table.insert(DropdownData, name)
-end
-
--- ## 2. Fungsi untuk Melakukan Teleport
-local function TeleportToLocation(locationName)
-    local destination = TeleportLocations[locationName]
-    
-    if destination then
-        -- Pastikan karakter dan HumanoidRootPart ada sebelum teleport
-        local HRP = Character:FindFirstChild("HumanoidRootPart")
-        if HRP then
-            HRP.CFrame = CFrame.new(destination)
-            print("Berhasil Teleport ke: " .. locationName)
-        else
-            print("Error: HumanoidRootPart tidak ditemukan.")
-        end
-    else
-        print("Error: Lokasi " .. locationName .. " tidak ditemukan dalam list.")
-    end
-end
-
--- ## 3. Implementasi Dropdown Menu
-Section:NewDropdown({
-	Title = "Teleport Destinations",
-	Name = "Teleport",
-	-- Gunakan nama-nama tempat yang sudah diekstrak
-	Data = DropdownData,
-	-- Set default ke tempat pertama dalam daftar, atau tempat yang spesifik
-	Default = DropdownData[1], 
-	Callback = function(selectedName)
-		print("Memilih lokasi: " .. selectedName)
-		-- Panggil fungsi teleport saat nilai dropdown berubah
-		TeleportToLocation(selectedName)
-	end,
-})
 --========================================================--
 --           AUTO FISHING SECTION (BARU, KOSONG)
 --========================================================--
@@ -247,6 +183,75 @@ UIControl:NewButton({
 	Title = "Close UI",
 	Callback = function()
 		Windows:Destroy()
+	end,
+})
+
+--========================================================--
+--                    TELEPORT FEATURES
+--========================================================--
+
+-- Definisikan layanan yang diperlukan
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+
+-- ## 1. Definisikan Data Lokasi (Nama dan Koordinat)
+local TeleportLocations = {
+    -- Format: "Nama Tempat" = Vector3.new(X, Y, Z)
+    ["Fisherman Island"] = Vector3.new(35, 17, 2851),
+    ["Ancient Jungle"] = Vector3.new(1489, 7, -425),
+    ["Sacred Temple"] = Vector3.new(1478, -22, -611),
+    ["Ancuent Ruins"] = Vector3.new(6097, -586, 4665),
+	["Clasic Island"] = Vector3.new(1232, 10, 2843),
+	["Iron Cavern"] = Vector3.new(-8899, -582, 157),
+	["Iron Cafe"] = Vector3.new(-8642, -548, 161),
+	["Treasure Room"] = Vector3.new(-3600, -267, -1558),
+	["Sisyphus Statue"] = Vector3.new(-3693, -136, -1044),
+	["Crater Island"] = Vector3.new(975, 30, 4950),
+	["Kohana"] = Vector3.new(-635, 16, 595),
+	["Volcano Kohana"] = Vector3.new(-632, 55, 198),
+	["Second Enchant Room"] = Vector3.new(1480, 128, -590),
+	["Enchant Room"] = Vector3.new(3231, -1303, 1402),
+	["Coral Refs"] = Vector3.new(-2855, 47, 1997),
+	["Tropical Grove"] = Vector3.new(-2048, 6, 3657),
+}
+
+-- Ambil nama-nama tempat untuk menu dropdown
+local DropdownData = {}
+for name, _ in pairs(TeleportLocations) do
+    table.insert(DropdownData, name)
+end
+
+-- ## 2. Fungsi untuk Melakukan Teleport
+local function TeleportToLocation(locationName)
+    local destination = TeleportLocations[locationName]
+    
+    if destination then
+        -- Pastikan karakter dan HumanoidRootPart ada sebelum teleport
+        local HRP = Character:FindFirstChild("HumanoidRootPart")
+        if HRP then
+            HRP.CFrame = CFrame.new(destination)
+            print("Berhasil Teleport ke: " .. locationName)
+        else
+            print("Error: HumanoidRootPart tidak ditemukan.")
+        end
+    else
+        print("Error: Lokasi " .. locationName .. " tidak ditemukan dalam list.")
+    end
+end
+
+-- ## 3. Implementasi Dropdown Menu
+TeleportSection:NewDropdown({
+	Title = "Teleport Destinations",
+	Name = "Teleport",
+	-- Gunakan nama-nama tempat yang sudah diekstrak
+	Data = DropdownData,
+	-- Set default ke tempat pertama dalam daftar, atau tempat yang spesifik
+	Default = DropdownData[1], 
+	Callback = function(selectedName)
+		print("Memilih lokasi: " .. selectedName)
+		-- Panggil fungsi teleport saat nilai dropdown berubah
+		TeleportToLocation(selectedName)
 	end,
 })
 
