@@ -1,122 +1,212 @@
-local WindUI = loadstring(game:HttpGet("https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"))()
-WindUI:AddTheme({
-    Name = "My Theme", -- theme name
-    
-    
-    -- More Soon!
-    
-    Accent = Color3.fromHex("#18181b"),
-    Background = Color3.fromHex("#101010"), -- Accent
-    BackgroundTransparency = 0,
-    Outline = Color3.fromHex("#FFFFFF"),
-    Text = Color3.fromHex("#FFFFFF"),
-    Placeholder = Color3.fromHex("#7a7a7a"),
-    Button = Color3.fromHex("#52525b"),
-    Icon = Color3.fromHex("#a1a1aa"),
-    
-    Hover = Color3.fromHex("#FFFFFF"), -- Text
-    BackgroundTransparency = 0,
-    
-    WindowBackground = Color3.fromHex("101010") -- Background
-    WindowShadow = Color3.fromHex("000000"),
-    
-    DialogBackground = Color3.fromHex("#101010"), -- Background
-    DialogBackgroundTransparency = 0, -- BackgroundTransparency
-    DialogTitle = Color3.fromHex("#FFFFFF"), -- Text
-    DialogContent = Color3.fromHex("#FFFFFF"), -- Text
-    DialogIcon = Color3.fromHex("#a1a1aa"), -- Icon
-    
-    WindowTopbarButtonIcon = Color3.fromHex("a1a1aa"), -- Icon
-    WindowTopbarTitle = Color3.fromHex("FFFFFF"), -- Text
-    WindowTopbarAuthor = Color3.fromHex("FFFFFF"), -- Text
-    WindowTopbarIcon = Color3.fromHex("FFFFFF"), -- Text
-    
-    TabBackground = Color3.fromHex("#FFFFFF"), -- Text
-    TabTitle = Color3.fromHex("#FFFFFF"), -- Text
-    TabIcon = Color3.fromHex("a1a1aa"), -- Icon
-    
-    ElementBackground = Color3.fromHex("#FFFFFF"), -- Text
-    ElementTitle = Color3.fromHex("#FFFFFF"), -- Text
-    ElementDesc = Color3.fromHex("#FFFFFF"), -- Text
-    ElementIcon = Color3.fromHex("#a1a1aa"), -- Icon
-    
-    PopupBackground = Color3.fromHex("#101010"), -- Background
-    PopupBackgroundTransparency = 0, -- BackgroundTransparency
-    PopupTitle = Color3.fromHex("#FFFFFF"), -- Text
-    PopupContent = Color3.fromHex("#FFFFFF"), -- Text
-    PopupIcon = Color3.fromHex("#a1a1aa"), -- Icon
-    
+local SugarLibrary = loadstring(game:HttpGetAsync('https://raw.githubusercontent.com/Yomkav2/Sugar-UI/refs/heads/main/Source'))();
+local Notification = SugarLibrary.Notification();
+
+Notification.new({
+	Title = "Fish It game detected",
+	Description = "loading Fish It script",
+	Duration = 5,
+	Icon = "bell-ring"
 })
 
-local Window = WindUI:CreateWindow({
-    Title = "Catraz Hub",
-    Icon = "turtle", -- lucide icon
-    Author = "by alcatraz",
-    Folder = "Catraz Hub",
-    
-    -- ↓ This all is Optional. You can remove it.
-    Size = UDim2.fromOffset(580, 460),
-    MinSize = Vector2.new(560, 350),
-    MaxSize = Vector2.new(850, 560),
-    Transparent = true,
-    Theme = "Dark",
-    Resizable = true,
-    SideBarWidth = 200,
-    BackgroundImageTransparency = 0.42,
-    HideSearchBar = true,
-    ScrollBarEnabled = false,
-    
-    -- ↓ Optional. You can remove it.
-    --[[ You can set 'rbxassetid://' or video to Background.
-        'rbxassetid://':
-            Background = "rbxassetid://", -- rbxassetid
-        Video:
-            Background = "video:YOUR-RAW-LINK-TO-VIDEO.webm", -- video 
-    --]]
-    
-    -- ↓ Optional. You can remove it.
-    User = {
-        Enabled = true,
-        Anonymous = true,
-        Callback = function()
-            print("clicked")
-        end,
-    },
-    
-    --       remove this all, 
-    -- !  ↓  if you DON'T need the key system
-    KeySystem = { 
-        -- ↓ Optional. You can remove it.
-        Key = { "1234", "5678" },
-        
-        Note = "Key sistem in discord",
-        
-        -- ↓ Optional. You can remove it.
-        Thumbnail = {
-            Image = "rbxassetid://96408954450599",
-            Title = "Catraz Hub",
-        },
-        
-        -- ↓ Optional. You can remove it.
-        URL = "YOUR LINK TO GET KEY (Discord, Linkvertise, Pastebin, etc.)",
-        
-        -- ↓ Optional. You can remove it.
-        SaveKey = false, -- automatically save and load the key.
-        
-        -- ↓ Optional. You can remove it.
-        -- API = {} ← Services. Read about it below ↓
-    },
+local Windows = SugarLibrary.new({
+	Title = "Catraz Hub",
+	Description = "by alcatraz",
+	Keybind = Enum.KeyCode.LeftControl,
+	Logo = 'http://www.roblox.com/asset/?id=79862153675550',
+	ConfigFolder = "catrazhub"  -- Custom folder name
 })
-Window:EditOpenButton({
-    Title = "Open Catraz Hub",
-    Icon = "monitor",
-    CornerRadius = UDim.new(0,16),
-    StrokeThickness = 2,
-    Color = ColorSequence.new( -- gradient
-        Color3.fromHex("FF0F7B"), 
-        Color3.fromHex("F89B29")
-    ),
-    OnlyMobile = false,
-    Enabled = true,
-    Draggable = true,
+
+local TabFrame = Windows:NewTab({
+	Title = "Example",
+	Description = "example tab",
+	Icon = "house"
+})
+
+local ConfigTab = Windows:NewTab({
+	Title = "Configs",
+	Description = "Config Management",
+	Icon = "save"
+})
+
+local Section = TabFrame:NewSection({
+	Title = "Section",
+	Icon = "list",
+	Position = "Left"
+})
+
+local InfoSection = TabFrame:NewSection({
+	Title = "Information",
+	Icon = "info",
+	Position = "Right"
+})
+
+local ConfigSection = ConfigTab:NewSection({
+	Title = "Config Tools",
+	Icon = "file-cog",
+	Position = "Left"
+})
+
+Section:NewToggle({
+	Title = "Toggle",
+	Name = "Toggle1",
+	Default = false,
+	Callback = function(tr)
+		print(tr)
+	end,
+})
+
+Section:NewToggle({
+	Title = "Auto Farm",
+	Name = "AutoFarm",
+	Default = false,
+	Callback = function(tr)
+		print(tr)
+	end,
+})
+
+Section:NewButton({
+	Title = "Kill All",
+	Callback = function()
+		Notification.new({
+			Title = "Killed",
+			Description = "10",
+			Duration = 5,
+			Icon = "sword"
+		})
+		print('killed')
+	end,
+})
+
+Section:NewButton({
+	Title = "Teleport",
+	Callback = function()
+		print('tp')
+	end,
+})
+
+Section:NewSlider({
+	Title = "Slider",
+	Name = "Slider1",
+	Min = 10,
+	Max = 50,
+	Default = 25,
+	Callback = function(a)
+		print(a)
+	end,
+})
+
+Section:NewSlider({
+	Title = "WalkSpeed",
+	Name = "WalkSpeed",
+	Min = 15,
+	Max = 50,
+	Default = 16,
+	Callback = function(a)
+		print(a)
+		
+	end,
+})
+
+Section:NewKeybind({
+	Title = "Keybind",
+	Name = "Keybind1",
+	Default = Enum.KeyCode.RightAlt,
+	Callback = function(a)
+		print(a)
+	end,
+})
+
+Section:NewKeybind({
+	Title = "Auto Combo",
+	Name = "AutoCombo",
+	Default = Enum.KeyCode.T,
+	Callback = function(a)
+		print(a)
+	end,
+})
+
+local configNames = Windows.ListConfigs()  -- Get existing configs
+
+local configDropdown = ConfigSection:NewDropdown({
+	Title = "Configs",
+	Data = configNames,
+	Default = configNames[1] or "None",
+	Callback = function(a)
+		print("Selected config: " .. a)
+	end,
+})
+
+local configNameTextbox = ConfigSection:NewTextbox({
+	Title = "Config Name",
+	Default = "",
+	FileType = "",  -- Empty
+	Callback = function(name)
+		print("Entered name: " .. name)
+	end,
+})
+
+ConfigSection:NewButton({
+	Title = "Create Config",
+	Callback = function()
+		local newName = configNameTextbox.Get()
+		if newName and newName ~= "" then
+			Windows.SaveConfig(newName)
+			configNames = Windows.ListConfigs()
+			configDropdown.Refresh(configNames)
+			print("Created config: " .. newName)
+		end
+	end,
+})
+
+ConfigSection:NewButton({
+	Title = "Load Config",
+	Callback = function()
+		local selected = configDropdown.Get()
+		if selected then
+			Windows.LoadConfig(selected)
+			print("Loaded config: " .. selected)
+		end
+	end,
+})
+
+ConfigSection:NewButton({
+	Title = "Delete Config",
+	Callback = function()
+		local selected = configDropdown.Get()
+		if selected then
+			delfile(Windows.ConfigFolder .. "/" .. selected .. ".json")
+			configNames = Windows.ListConfigs()
+			configDropdown.Refresh(configNames)
+			print("Deleted config: " .. selected)
+		end
+	end,
+})
+
+ConfigSection:NewButton({
+	Title = "Refresh Configs",
+	Callback = function()
+		configNames = Windows.ListConfigs()
+		configDropdown.Refresh(configNames)
+		print("Configs refreshed")
+	end,
+})
+
+Section:NewDropdown({
+	Title = "Method",
+	Name = "Method",
+	Data = {'Teleport','Locker','Auto'},
+	Default = 'Auto',
+	Callback = function(a)
+		print(a)
+	end,
+})
+
+InfoSection:NewTitle('UI by CATSUS')
+InfoSection:NewTitle('Modified by Yomka')
+InfoSection:NewButton({
+
+	Title = "Discord",
+	Callback = function()
+		print('https://discord.gg/PKdh229jqg')
+	end,
 })
