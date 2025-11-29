@@ -18,7 +18,7 @@ local Window = WindUI:CreateWindow({
     -- Tombol buka/tutup UI (Mobile/PC)
     OpenButton = {
         Title = "Open UI",
-        Icon = "rbxassetid://12345678",
+        Icon = "Snail",
         Enabled = true,
         Key = Enum.KeyCode.RightControl -- Default keybind buka tutup
     }
