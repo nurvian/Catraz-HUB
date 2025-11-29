@@ -50,7 +50,7 @@ WindUI:AddTheme({
 
 local Window = WindUI:CreateWindow({
     Title = "Catraz Hub",
-    Icon = "snail", -- lucide icon
+    Icon = "turtle", -- lucide icon
     Author = "by alcatraz",
     Folder = "Catraz Hub",
     
