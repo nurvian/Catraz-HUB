@@ -131,9 +131,21 @@ local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
 local TeleportLocations = {
     -- Format: "Nama Tempat" = Vector3.new(X, Y, Z)
     ["Fisherman Island"] = Vector3.new(35, 17, 2851),
-    ["Mining Area 1"] = Vector3.new(500, 50, 800),
-    ["Safe Zone"] = Vector3.new(-200, 15, -100),
-    ["Testing Spot"] = Vector3.new(0, 50, 0),
+    ["Ancient Jungle"] = Vector3.new(1489, 7, -425),
+    ["Sacred Temple"] = Vector3.new(1478, -22, -611),
+    ["Ancuent Ruins"] = Vector3.new(6097, -586, 4665),
+	["Clasic Island"] = Vector3.new(1232, 10, 2843),
+	["Iron Cavern"] = Vector3.new(-8899, -582, 157),
+	["Iron Cafe"] = Vector3.new(-8642, -548, 161),
+	["Treasure Room"] = Vector3.new(-3600, -267, -1558),
+	["Sisyphus Statue"] = Vector3.new(-3693, -136, -1044),
+	["Crater Island"] = Vector3.new(975, 30, 4950),
+	["Kohana"] = Vector3.new(-635, 16, 595),
+	["Volcano Kohana"] = Vector3.new(-632, 55, 198),
+	["Second Enchant Room"] = Vector3.new(1480, 128, -590),
+	["Enchant Room"] = Vector3.new(3231, -1303, 1402),
+	["Coral Refs"] = Vector3.new(-2855, 47, 1997),
+	["Tropical Grove"] = Vector3.new(-2048, 6, 3657),
 }
 
 -- Ambil nama-nama tempat untuk menu dropdown
