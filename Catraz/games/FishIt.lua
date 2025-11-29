@@ -110,7 +110,7 @@ local ConfigSection = ConfigTab:NewSection({
 })
 
 local TeleportSection = TeleportTab:NewSection({
-	Title = "Telport",
+	Title = "Teleport",
 	Icon = "map-pin",
 	Position = "Left"
 })
