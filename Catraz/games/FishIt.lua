@@ -123,11 +123,47 @@ Section:NewToggle({
 })
 
 Section:NewToggle({
-	Title = "Auto Farm",
-	Name = "AutoFarm",
+	Title = "Skip Minigame Fishing",
+	Name = "ToggleSkipFish",
 	Default = false,
-	Callback = function(v)
-		print("AutoFarm:", v)
+	Callback = function(tr)
+		-- Variabel dan Fungsi Skip yang sudah kita buat sebelumnya
+		local ReplicatedStorage = game:GetService("ReplicatedStorage")
+		
+		-- Dapatkan Referensi Remote (sebaiknya diletakkan di luar callback untuk efisiensi)
+		local RF_Start = ReplicatedStorage:WaitForChild("Packages"):WaitForChild("_Index"):WaitForChild("sleitnick_net@0.2.0"):WaitForChild("net"):WaitForChild("RF/RequestFishingMinigameStarted")
+		local RE_Complete = ReplicatedStorage:WaitForChild("Packages"):WaitForChild("_Index"):WaitForChild("sleitnick_net@0.2.0"):WaitForChild("net"):WaitForChild("RE/FishingCompleted")
+
+		if tr == true then
+			-- ✅ Logic dijalankan saat Toggle diaktifkan (ON)
+
+			local args = {
+				-- Masukkan argumen posisi dan timestamp yang sesuai
+				-1.233184814453125,
+				0.8114499069302521,
+				os.time() 
+			}
+
+			print("Toggle ON: Mencoba melakukan skip memancing...")
+
+			-- Tahap 1: Memulai minigame (InvokeServer)
+			local startResult = RF_Start:InvokeServer(unpack(args))
+			
+			-- Tahap 2: Waktu tunggu minimal
+			wait(0.1) 
+			
+			-- Tahap 3: Menyelesaikan/Menarik Kail (FireServer)
+			RE_Complete:FireServer()
+            
+            print("Fishing sequence completed/skipped. Result from start:", startResult)
+
+		else
+			-- ❌ Logic dijalankan saat Toggle dinonaktifkan (OFF)
+			print("Toggle OFF: Skip memancing dinonaktifkan.")
+            
+            -- Untuk fungsi yang hanya dijalankan sekali (seperti ini),
+            -- biasanya tidak ada aksi yang perlu dilakukan saat dinonaktifkan.
+		end
 	end,
 })
 
