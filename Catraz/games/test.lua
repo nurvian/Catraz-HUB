@@ -17,11 +17,18 @@ local Window = WindUI:CreateWindow({
     
     -- Tombol buka/tutup UI (Mobile/PC)
     OpenButton = {
-        Title = "Open UI",
-        Icon = "Snail",
-        Enabled = true,
-        Key = Enum.KeyCode.RightControl -- Default keybind buka tutup
-    }
+        Title = "Open .ftgs hub UI", -- can be changed
+        CornerRadius = UDim.new(1,0), -- fully rounded
+        StrokeThickness = 3, -- removing outline
+        Enabled = true, -- enable or disable openbutton
+        Draggable = true,
+        OnlyMobile = false,
+        
+        Color = ColorSequence.new( -- gradient
+            Color3.fromHex("#30FF6A"), 
+            Color3.fromHex("#e7ff2f")
+        )
+    },
 })
 
 -- 2. Membuat Tab
