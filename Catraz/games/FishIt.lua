@@ -90,6 +90,19 @@ local InfoSection = MainFrame:NewSection({
 	Position = "Right"
 })
 
+-- *** SECTION BARU ***
+local AutoFishingSection = MainFrame:NewSection({
+	Title = "Auto Fishing",
+	Icon = "fish",
+	Position = "Left"
+})
+
+local AutoSellSection = MainFrame:NewSection({
+	Title = "Auto Sell",
+	Icon = "shopping-bag",
+	Position = "Left"
+})
+
 local ConfigSection = ConfigTab:NewSection({
 	Title = "Config Tools",
 	Icon = "file-cog",
@@ -118,72 +131,48 @@ Section:NewToggle({
 	end,
 })
 
-Section:NewButton({
-	Title = "Kill All",
-	Callback = function()
-		Notification.new({
-			Title = "Killed",
-			Description = "10",
-			Duration = 5,
-			Icon = "sword"
-		})
-		print("Killed All")
-	end,
-})
+--========================================================--
+--           AUTO FISHING SECTION (BARU, KOSONG)
+--========================================================--
 
-Section:NewButton({
-	Title = "Teleport",
-	Callback = function()
-		print("Teleport used")
-	end,
-})
-
--- SLIDERS
-
-Section:NewSlider({
-	Title = "Slider",
-	Name = "Slider1",
-	Min = 10,
-	Max = 50,
-	Default = 25,
+AutoFishingSection:NewToggle({
+	Title = "Auto Cast",
+	Default = false,
 	Callback = function(v)
-		print("Slider:", v)
-	end,
+		print("Auto Cast:", v)
+	end
 })
 
-Section:NewSlider({
-	Title = "WalkSpeed",
-	Name = "WalkSpeed",
-	Min = 15,
-	Max = 50,
-	Default = 16,
+AutoFishingSection:NewToggle({
+	Title = "Auto Reel",
+	Default = false,
 	Callback = function(v)
-		print("WalkSpeed:", v)
-	end,
-})
-
--- KEYBINDS
-
-Section:NewKeybind({
-	Title = "Keybind",
-	Name = "Keybind1",
-	Default = Enum.KeyCode.RightAlt,
-	Callback = function(key)
-		print("Pressed:", key)
-	end,
-})
-
-Section:NewKeybind({
-	Title = "Auto Combo",
-	Name = "AutoCombo",
-	Default = Enum.KeyCode.T,
-	Callback = function(key)
-		print("Auto Combo:", key)
-	end,
+		print("Auto Reel:", v)
+	end
 })
 
 --========================================================--
---                    UI CONTROL (ADDED)
+--               AUTO SELL SECTION (BARU, KOSONG)
+--========================================================--
+
+AutoSellSection:NewToggle({
+	Title = "Auto Sell All Fish",
+	Default = false,
+	Callback = function(v)
+		print("Auto Sell Fish:", v)
+	end
+})
+
+AutoSellSection:NewToggle({
+	Title = "Auto Sell Trash",
+	Default = false,
+	Callback = function(v)
+		print("Auto Sell Trash:", v)
+	end
+})
+
+--========================================================--
+--                    UI CONTROL
 --========================================================--
 
 local UIControl = MiscTab:NewSection({
@@ -277,13 +266,3 @@ ConfigSection:NewButton({
 --                       DROPDOWN
 --========================================================--
 
-Section:NewDropdown({
-	Title = "Method",
-	Name = "Method",
-	Data = {"Teleport", "Locker", "Auto"},
-	Default = "Auto",
-	Callback = function(method)
-		print("Method:", method)
-	end,
-})
---========================================================--
