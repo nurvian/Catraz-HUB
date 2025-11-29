@@ -16,13 +16,13 @@ local Window = WindUI:CreateWindow({
     Theme = "Dark", -- Tema default
     
     -- Tombol buka/tutup UI (Mobile/PC)
+
     OpenButton = {
-        Title = "Catraz HUB", -- can be changed
         CornerRadius = UDim.new(1,0), -- fully rounded
         StrokeThickness = 3, -- removing outline
         Enabled = true, -- enable or disable openbutton
         Draggable = true,
-        OnlyMobile = false,
+        OnlyMobile = true,
         
         Color = ColorSequence.new( -- gradient
             Color3.fromHex("#c403ff"), 
