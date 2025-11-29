@@ -7,17 +7,17 @@ local WindUI = loadstring(game:HttpGet("https://raw.githubusercontent.com/Footag
 
 -- 1. Membuat Window
 local Window = WindUI:CreateWindow({
-    Title = "Nama Script Hub | Game Name", -- Ganti judul scriptmu
-    Author = ".ftgs", -- Ganti nama pembuat
-    Folder = "MyScriptHub", -- Folder untuk config save
-    Icon = "rbxassetid://12345678", -- Bisa pakai "sfsymbols:..." atau rbxassetid
+    Title = "Catraz Hub | FISH IT", -- Ganti judul scriptmu
+    Author = "By AlCatraz", -- Ganti nama pembuat
+    Folder = "Catraz", -- Folder untuk config save
+    Icon = "snail", -- Bisa pakai "sfsymbols:..." atau rbxassetid
     Size = UDim2.fromOffset(580, 460),
-    Transparent = false, -- Ganti ke true jika ingin transparan
+    Transparent = true, -- Ganti ke true jika ingin transparan
     Theme = "Dark", -- Tema default
     
     -- Tombol buka/tutup UI (Mobile/PC)
     OpenButton = {
-        Title = "Open .ftgs hub UI", -- can be changed
+        Title = "Catraz HUB", -- can be changed
         CornerRadius = UDim.new(1,0), -- fully rounded
         StrokeThickness = 3, -- removing outline
         Enabled = true, -- enable or disable openbutton
@@ -25,8 +25,8 @@ local Window = WindUI:CreateWindow({
         OnlyMobile = false,
         
         Color = ColorSequence.new( -- gradient
-            Color3.fromHex("#30FF6A"), 
-            Color3.fromHex("#e7ff2f")
+            Color3.fromHex("#c403ff"), 
+            Color3.fromHex("#8302ab")
         )
     },
 })
