@@ -1,7 +1,7 @@
 local Rayfield = loadstring(game:HttpGet('https://sirius.menu/rayfield'))()
 local Window = Rayfield:CreateWindow({
    Name = "Catraz Hub",
-   Icon = snail, -- Icon in Topbar. Can use Lucide Icons (string) or Roblox Image (number). 0 to use no icon (default).
+   Icon = "snail", -- Icon in Topbar. Can use Lucide Icons (string) or Roblox Image (number). 0 to use no icon (default).
    LoadingTitle = "Catraz Hub is Loading . . .",
    LoadingSubtitle = "by alcatraz",
    ShowText = "Catraz Hub", -- for mobile users to unhide rayfield, change if you'd like
@@ -36,13 +36,13 @@ local Window = Rayfield:CreateWindow({
    }
 })
 
-local Tab = Window:CreateTab("Main", house) -- Main Tab
-local TabShop = Window:CreateTab("Shop", store) -- Tab Shp
-local TabPlayer = Window:CreateTab("Player", person-standing) -- Plyaer Tab
-local TabTele = Window:CreateTab("Teleport", map-pin) -- Teleport Tab
-local TabEvent = Window:CreateTab("Event", calendar) -- Event Tab
-local TabQuest = Window:CreateTab("Quest", scroll-text) -- Quest Tab
-local TabMisc = Window:CreateTab("Misc", snail) -- Misc Tab
+local Tab = Window:CreateTab("Main", "house") -- Main Tab
+local TabShop = Window:CreateTab("Shop", "store") -- Tab Shop
+local TabPlayer = Window:CreateTab("Player", "person-standing") -- Plyaer Tab
+local TabTele = Window:CreateTab("Teleport", "map-pin") -- Teleport Tab
+local TabEvent = Window:CreateTab("Event", "calendar") -- Event Tab
+local TabQuest = Window:CreateTab("Quest", "scroll-text") -- Quest Tab
+local TabMisc = Window:CreateTab("Misc", "snail") -- Misc Tab
 
 
 
