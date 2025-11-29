@@ -105,7 +105,7 @@ local PlayerSection = PlayerTab:Section({
 })
 
 local TeleportSection = TeleportTab:Section({
-    Title = "Teleport Tools",
+    Title = "Teleport To Islands",
     Icon = "navigation",
     Opened = true,
 })
@@ -138,3 +138,80 @@ local ConfigSection = ConfigTab:Section({
 -- 4. auto fishing script
 
 -- 5. auto selling script
+
+-- 6. teleport script
+-------------------------------------------------------
+-- 🔥 7. SISTEM TELEPORT V4 (AUTO INTEGRATED)
+-------------------------------------------------------
+
+local V4_LOCATIONS = {
+    ["Fisherman Island"] = CFrame.new(35, 17, 2851),
+    ["Ancient Jungle"] = CFrame.new(1489, 7, -425),
+    ["Sacred Temple"] = CFrame.new(1478, -22, -611),
+    ["Ancuent Ruins"] = CFrame.new(6097, -586, 4665),
+    ["Clasic Island"] = CFrame.new(1232, 10, 2843),
+    ["Iron Cavern"] = CFrame.new(-8899, -582, 157),
+    ["Iron Cafe"] = CFrame.new(-8642, -548, 161),
+    ["Treasure Room"] = CFrame.new(-3600, -267, -1558),
+    ["Sisyphus Statue"] = CFrame.new(-3693, -136, -1044),
+    ["Crater Island"] = CFrame.new(975, 30, 4950),
+    ["Kohana"] = CFrame.new(-635, 16, 595),
+    ["Volcano Kohana"] = CFrame.new(-632, 55, 198),
+    ["Second Enchant Room"] = CFrame.new(1480, 128, -590),
+    ["Enchant Room"] = CFrame.new(3231, -1303, 1402),
+    ["Coral Refs"] = CFrame.new(-2855, 47, 1997),
+    ["Tropical Grove"] = CFrame.new(-2048, 6, 3657),
+}
+
+-- 🔽 Ambil list nama tempat
+local DropdownData = {}
+for name,_ in pairs(V4_LOCATIONS) do
+    table.insert(DropdownData, name)
+end
+
+-- 📌 Ambil player dan character
+local Player = game.Players.LocalPlayer
+local Character = Player.Character or Player.CharacterAdded:Wait()
+
+-- 🚀 Fungsi Teleport
+local function TeleportToLocation(locationName)
+    local destinationCFrame = V4_LOCATIONS[locationName]
+
+    if destinationCFrame then
+        local HRP = Character:FindFirstChild("HumanoidRootPart")
+        if HRP then
+            HRP.CFrame = destinationCFrame
+            print("Teleport → " .. locationName)
+        else
+            print("❌ HumanoidRootPart tidak ditemukan.")
+        end
+    else
+        print("❌ Lokasi tidak ditemukan.")
+    end
+end
+
+local SelectedLocation = nil
+
+TeleportSection:Dropdown({
+    Title = "Pilih Lokasi Teleport",
+    Description = "Pilih tujuan teleport",
+    Values = DropdownData,
+    Multi = false,
+    Default = nil,
+    Callback = function(v)
+        SelectedLocation = v
+    end
+})
+
+TeleportSection:Button({
+    Title = "Teleport!",
+    Description = "Klik untuk teleport ke lokasi terpilih",
+    Icon = "navigation",
+    Callback = function()
+        if SelectedLocation then
+            TeleportToLocation(SelectedLocation)
+        else
+            print("❌ Pilih lokasi terlebih dahulu!")
+        end
+    end
+})
