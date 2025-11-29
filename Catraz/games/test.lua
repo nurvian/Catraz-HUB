@@ -85,10 +85,11 @@ local ConfigTab = Window:Tab({
 -- 3. Membuat Section di dalam Tab
 
 local MainSection = MainTab:Section({
-    Title = "Main Features",
-    Icon = "house",
-    Opened = true,
+    Title = "Auto Farm",
+    Icon = "fish-symbol",
+    Opened = false,
 })
+
 
 local ShopSection = ShopTab:Section({
     Title = "Shop Section",
@@ -131,3 +132,8 @@ local ConfigSection = ConfigTab:Section({
     Icon = "save",
     Opened = true,
 })
+
+
+-- 4. auto fishing script
+
+-- 5. auto selling script
