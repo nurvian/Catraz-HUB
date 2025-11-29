@@ -2,12 +2,6 @@ local SugarLibrary = loadstring(game:HttpGetAsync(
     'https://raw.githubusercontent.com/Yomkav2/Sugar-UI/refs/heads/main/Source'
 ))();
 local Notification = SugarLibrary.Notification();
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local Net = ReplicatedStorage:WaitForChild("Packages"):WaitForChild("_Index"):WaitForChild("sleitnick_net@0.2.0"):WaitForChild("net")
-local SellAllItems = Net:WaitForChild("RF/SellAllItems")
-
--- Variabel untuk menyimpan koneksi loop agar bisa dihentikan
-local autoSellConnection = nil
 
 Notification.new({
 	Title = "Fish It game detected",
@@ -128,48 +122,56 @@ Section:NewToggle({
 	end,
 })
 
-Section:NewToggle({
-	Title = "Auto Sell Items",
-	Name = "AutoSellToggle",
-	Default = false,
-	Callback = function(isEnabled)
-		if isEnabled then
-			-- Jika toggle dihidupkan
-			print("Auto Sell Dihidupkan")
-			
-			-- Buat loop baru
-			autoSellConnection = task.spawn(function()
-				while true do
-					-- Periksa apakah toggle masih aktif. 
-					-- Sebenarnya tidak perlu di while true, tapi ini menjaga agar loop berhenti 
-					-- jika ada cara lain mematikan toggle (misalnya, jika game dihentikan).
-					if autoSellConnection == nil then break end 
+-- Definisikan layanan yang diperlukan
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
 
-					-- Panggil fungsi InvokeServer
-					local success, result = pcall(function()
-						return SellAllItems:InvokeServer()
-					end)
+-- ## 1. Definisikan Data Lokasi (Nama dan Koordinat)
+local TeleportLocations = {
+    -- Format: "Nama Tempat" = Vector3.new(X, Y, Z)
+    ["Fisherman Island"] = Vector3.new(35, 17, 2851),
+    ["Mining Area 1"] = Vector3.new(500, 50, 800),
+    ["Safe Zone"] = Vector3.new(-200, 15, -100),
+    ["Testing Spot"] = Vector3.new(0, 50, 0),
+}
 
-					if success then
-						-- print("Jual berhasil:", result)
-					else
-						print("Error saat menjual:", result)
-					end
-					
-					-- Tunggu sebentar sebelum menjual lagi (misalnya 1 detik)
-					task.wait(1) 
-				end
-			end)
-		else
-			-- Jika toggle dimatikan
-			print("Auto Sell Dimatikan")
-			
-			-- Hentikan loop yang sedang berjalan
-			if autoSellConnection then
-				task.cancel(autoSellConnection)
-				autoSellConnection = nil
-			end
-		end
+-- Ambil nama-nama tempat untuk menu dropdown
+local DropdownData = {}
+for name, _ in pairs(TeleportLocations) do
+    table.insert(DropdownData, name)
+end
+
+-- ## 2. Fungsi untuk Melakukan Teleport
+local function TeleportToLocation(locationName)
+    local destination = TeleportLocations[locationName]
+    
+    if destination then
+        -- Pastikan karakter dan HumanoidRootPart ada sebelum teleport
+        local HRP = Character:FindFirstChild("HumanoidRootPart")
+        if HRP then
+            HRP.CFrame = CFrame.new(destination)
+            print("Berhasil Teleport ke: " .. locationName)
+        else
+            print("Error: HumanoidRootPart tidak ditemukan.")
+        end
+    else
+        print("Error: Lokasi " .. locationName .. " tidak ditemukan dalam list.")
+    end
+end
+
+-- ## 3. Implementasi Dropdown Menu
+Section:NewDropdown({
+	Title = "Teleport Destinations",
+	Name = "Teleport",
+	-- Gunakan nama-nama tempat yang sudah diekstrak
+	Data = DropdownData,
+	-- Set default ke tempat pertama dalam daftar, atau tempat yang spesifik
+	Default = DropdownData[1], 
+	Callback = function(selectedName)
+		print("Memilih lokasi: " .. selectedName)
+		-- Panggil fungsi teleport saat nilai dropdown berubah
+		TeleportToLocation(selectedName)
 	end,
 })
 --========================================================--
