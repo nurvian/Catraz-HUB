@@ -1,25 +1,71 @@
-local SugarLibrary = loadstring(game:HttpGetAsync('https://raw.githubusercontent.com/Yomkav2/Sugar-UI/refs/heads/main/Source'))();
+local SugarLibrary = loadstring(game:HttpGetAsync(
+    'https://raw.githubusercontent.com/Yomkav2/Sugar-UI/refs/heads/main/Source'
+))();
 local Notification = SugarLibrary.Notification();
 
 Notification.new({
 	Title = "Fish It game detected",
-	Description = "loading Fish It script",
+	Description = "Loading Fish It script",
 	Duration = 5,
 	Icon = "bell-ring"
 })
+
+--========================================================--
+--                    MAIN WINDOW
+--========================================================--
 
 local Windows = SugarLibrary.new({
 	Title = "Catraz Hub",
 	Description = "by alcatraz",
 	Keybind = Enum.KeyCode.LeftControl,
-	Logo = 'http://www.roblox.com/asset/?id=79862153675550',
-	ConfigFolder = "catrazhub"  -- Custom folder name
+	Logo = "http://www.roblox.com/asset/?id=79862153675550",
+	ConfigFolder = "catrazhub"
 })
 
-local TabFrame = Windows:NewTab({
-	Title = "Example",
-	Description = "example tab",
+--========================================================--
+--                        TABS
+--========================================================--
+
+local MainFrame = Windows:NewTab({
+	Title = "Main",
+	Description = "Main Features",
 	Icon = "house"
+})
+
+local ShopTab = Windows:NewTab({
+	Title = "Shop",
+	Description = "Shop Features",
+	Icon = "store"
+})
+
+local PlayerTab = Windows:NewTab({
+	Title = "Players",
+	Description = "Player Tools",
+	Icon = "users"
+})
+
+local TeleportTab = Windows:NewTab({
+	Title = "Teleport",
+	Description = "Teleport Tools",
+	Icon = "navigation"
+})
+
+local EventTab = Windows:NewTab({
+	Title = "Event",
+	Description = "Event Features",
+	Icon = "star"
+})
+
+local QuestTab = Windows:NewTab({
+	Title = "Quest",
+	Description = "Quest Tools",
+	Icon = "flag"
+})
+
+local MiscTab = Windows:NewTab({
+	Title = "Misc",
+	Description = "Miscellaneous",
+	Icon = "settings"
 })
 
 local ConfigTab = Windows:NewTab({
@@ -28,13 +74,17 @@ local ConfigTab = Windows:NewTab({
 	Icon = "save"
 })
 
-local Section = TabFrame:NewSection({
-	Title = "Section",
+--========================================================--
+--                        SECTIONS
+--========================================================--
+
+local Section = MainFrame:NewSection({
+	Title = "Main Functions",
 	Icon = "list",
 	Position = "Left"
 })
 
-local InfoSection = TabFrame:NewSection({
+local InfoSection = MainFrame:NewSection({
 	Title = "Information",
 	Icon = "info",
 	Position = "Right"
@@ -46,12 +96,16 @@ local ConfigSection = ConfigTab:NewSection({
 	Position = "Left"
 })
 
+--========================================================--
+--                     MAIN FEATURES
+--========================================================--
+
 Section:NewToggle({
 	Title = "Toggle",
 	Name = "Toggle1",
 	Default = false,
-	Callback = function(tr)
-		print(tr)
+	Callback = function(v)
+		print("Toggle1:", v)
 	end,
 })
 
@@ -59,8 +113,8 @@ Section:NewToggle({
 	Title = "Auto Farm",
 	Name = "AutoFarm",
 	Default = false,
-	Callback = function(tr)
-		print(tr)
+	Callback = function(v)
+		print("AutoFarm:", v)
 	end,
 })
 
@@ -73,16 +127,18 @@ Section:NewButton({
 			Duration = 5,
 			Icon = "sword"
 		})
-		print('killed')
+		print("Killed All")
 	end,
 })
 
 Section:NewButton({
 	Title = "Teleport",
 	Callback = function()
-		print('tp')
+		print("Teleport used")
 	end,
 })
+
+-- SLIDERS
 
 Section:NewSlider({
 	Title = "Slider",
@@ -90,8 +146,8 @@ Section:NewSlider({
 	Min = 10,
 	Max = 50,
 	Default = 25,
-	Callback = function(a)
-		print(a)
+	Callback = function(v)
+		print("Slider:", v)
 	end,
 })
 
@@ -101,18 +157,19 @@ Section:NewSlider({
 	Min = 15,
 	Max = 50,
 	Default = 16,
-	Callback = function(a)
-		print(a)
-		
+	Callback = function(v)
+		print("WalkSpeed:", v)
 	end,
 })
+
+-- KEYBINDS
 
 Section:NewKeybind({
 	Title = "Keybind",
 	Name = "Keybind1",
 	Default = Enum.KeyCode.RightAlt,
-	Callback = function(a)
-		print(a)
+	Callback = function(key)
+		print("Pressed:", key)
 	end,
 })
 
@@ -120,40 +177,43 @@ Section:NewKeybind({
 	Title = "Auto Combo",
 	Name = "AutoCombo",
 	Default = Enum.KeyCode.T,
-	Callback = function(a)
-		print(a)
+	Callback = function(key)
+		print("Auto Combo:", key)
 	end,
 })
 
-local configNames = Windows.ListConfigs()  -- Get existing configs
+--========================================================--
+--                    CONFIG MANAGEMENT
+--========================================================--
+
+local configNames = Windows.ListConfigs()
 
 local configDropdown = ConfigSection:NewDropdown({
 	Title = "Configs",
 	Data = configNames,
 	Default = configNames[1] or "None",
-	Callback = function(a)
-		print("Selected config: " .. a)
+	Callback = function(selected)
+		print("Selected config:", selected)
 	end,
 })
 
 local configNameTextbox = ConfigSection:NewTextbox({
 	Title = "Config Name",
 	Default = "",
-	FileType = "",  -- Empty
+	FileType = "",
 	Callback = function(name)
-		print("Entered name: " .. name)
+		print("Entered:", name)
 	end,
 })
 
 ConfigSection:NewButton({
 	Title = "Create Config",
 	Callback = function()
-		local newName = configNameTextbox.Get()
-		if newName and newName ~= "" then
-			Windows.SaveConfig(newName)
-			configNames = Windows.ListConfigs()
-			configDropdown.Refresh(configNames)
-			print("Created config: " .. newName)
+		local name = configNameTextbox.Get()
+		if name ~= "" then
+			Windows.SaveConfig(name)
+			configDropdown.Refresh(Windows.ListConfigs())
+			print("Created config:", name)
 		end
 	end,
 })
@@ -164,7 +224,7 @@ ConfigSection:NewButton({
 		local selected = configDropdown.Get()
 		if selected then
 			Windows.LoadConfig(selected)
-			print("Loaded config: " .. selected)
+			print("Loaded config:", selected)
 		end
 	end,
 })
@@ -175,9 +235,8 @@ ConfigSection:NewButton({
 		local selected = configDropdown.Get()
 		if selected then
 			delfile(Windows.ConfigFolder .. "/" .. selected .. ".json")
-			configNames = Windows.ListConfigs()
-			configDropdown.Refresh(configNames)
-			print("Deleted config: " .. selected)
+			configDropdown.Refresh(Windows.ListConfigs())
+			print("Deleted config:", selected)
 		end
 	end,
 })
@@ -185,28 +244,21 @@ ConfigSection:NewButton({
 ConfigSection:NewButton({
 	Title = "Refresh Configs",
 	Callback = function()
-		configNames = Windows.ListConfigs()
-		configDropdown.Refresh(configNames)
+		configDropdown.Refresh(Windows.ListConfigs())
 		print("Configs refreshed")
 	end,
 })
 
+--========================================================--
+--                       DROPDOWN
+--========================================================--
+
 Section:NewDropdown({
 	Title = "Method",
 	Name = "Method",
-	Data = {'Teleport','Locker','Auto'},
-	Default = 'Auto',
-	Callback = function(a)
-		print(a)
-	end,
-})
-
-InfoSection:NewTitle('UI by CATSUS')
-InfoSection:NewTitle('Modified by Yomka')
-InfoSection:NewButton({
-
-	Title = "Discord",
-	Callback = function()
-		print('https://discord.gg/PKdh229jqg')
+	Data = {"Teleport", "Locker", "Auto"},
+	Default = "Auto",
+	Callback = function(method)
+		print("Method:", method)
 	end,
 })
