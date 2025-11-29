@@ -183,6 +183,30 @@ Section:NewKeybind({
 })
 
 --========================================================--
+--                    UI CONTROL (ADDED)
+--========================================================--
+
+local UIControl = MiscTab:NewSection({
+	Title = "UI Control",
+	Icon = "monitor",
+	Position = "Left"
+})
+
+UIControl:NewButton({
+	Title = "Minimize UI",
+	Callback = function()
+		Windows:Toggle()
+	end,
+})
+
+UIControl:NewButton({
+	Title = "Close UI",
+	Callback = function()
+		Windows:Destroy()
+	end,
+})
+
+--========================================================--
 --                    CONFIG MANAGEMENT
 --========================================================--
 
@@ -262,3 +286,4 @@ Section:NewDropdown({
 		print("Method:", method)
 	end,
 })
+--========================================================--
