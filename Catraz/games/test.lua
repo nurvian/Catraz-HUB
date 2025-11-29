@@ -18,11 +18,12 @@ local Window = WindUI:CreateWindow({
     -- Tombol buka/tutup UI (Mobile/PC)
 
     OpenButton = {
+        Title = "Catraz HUB", -- can be changed
         CornerRadius = UDim.new(1,0), -- fully rounded
         StrokeThickness = 3, -- removing outline
         Enabled = true, -- enable or disable openbutton
         Draggable = true,
-        OnlyMobile = true,
+        OnlyMobile = false,
         
         Color = ColorSequence.new( -- gradient
             Color3.fromHex("#c403ff"), 
@@ -87,7 +88,7 @@ local ConfigTab = Window:Tab({
 local MainSection = MainTab:Section({
     Title = "Auto Farm",
     Icon = "fish-symbol",
-    Opened = false,
+    Opened = true,
 })
 
 
