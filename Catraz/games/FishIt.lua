@@ -174,14 +174,14 @@ AutoSellSection:NewToggle({
 --========================================================--
 
 local UIControl = MiscTab:NewSection({
-    Title = "UI Control",
-    Icon = "monitor",
-    Position = "Left"
+	Title = "UI Control",
+	Icon = "monitor",
+	Position = "Left"
 })
 
 UIControl:NewButton({
-    Title = "Minimize UI",
-    Callback = function()
+	Title = "Minimize UI",
+	Callback = function()
         local success, err = pcall(function()
             Windows:Toggle()
         end)
@@ -190,12 +190,12 @@ UIControl:NewButton({
         else
             print("UI Diminimalkan")
         end
-    end,
+	end,
 })
 
 UIControl:NewButton({
-    Title = "Close UI",
-    Callback = function()
+	Title = "Close UI",
+	Callback = function()
         local success, err = pcall(function()
             Windows:Destroy()
         end)
@@ -204,7 +204,7 @@ UIControl:NewButton({
         else
             print("UI Dihancurkan")
         end
-    end,
+	end,
 })
 
 --========================================================--
