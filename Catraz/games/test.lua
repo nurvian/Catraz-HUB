@@ -21,6 +21,7 @@ local Events = nil
 local Config = {
     AutoFish = false,
     BlatantMode = false,
+    FishingMode = "Instant"
     AutoCatch = false,
     AutoSell = false,
     GPUSaver = false,
@@ -83,7 +84,7 @@ local LOCATIONS = {
     ["Tropical Grove"] = CFrame.new(-2048, 6, 3657),
 }
 
--- Functions
+-- Fungsi CastRod tetap sama
 local function CastRod()
     pcall(function()
         Events.equip:FireServer(1)
@@ -94,6 +95,52 @@ local function CastRod()
     end)
 end
 
+-- 1. Mode Instant (Dulu NormalLoop) - Skip Minigame
+local function InstantLoop()
+    while fishingActive and not Config.BlatantMode and Config.FishingMode == "Instant" do
+        if not isFishing then
+            isFishing = true
+            CastRod()
+            task.wait(Config.FishDelay) -- Tunggu digigit
+            pcall(function() Events.fishing:FireServer() end) -- Langsung selesai
+            task.wait(Config.CatchDelay)
+            isFishing = false
+        else
+            task.wait(0.1)
+        end
+    end
+end
+
+-- 2. Mode Legit - Tap Tap Kenceng
+local function LegitLoop()
+    while fishingActive and not Config.BlatantMode and Config.FishingMode == "Legit" do
+        if not isFishing then
+            isFishing = true
+            CastRod()
+            task.wait(Config.FishDelay) -- Tunggu digigit
+            
+            -- Simulasi Tap Tap Kenceng (Minigame)
+            -- Kita spam klik kiri mouse selama 2 detik (bisa diatur)
+            local tapDuration = 0.5 
+            local startTime = tick()
+            
+            while tick() - startTime < tapDuration do
+                Services.VirtualUser:ClickButton1(Vector2.new(999, 999))
+                task.wait(0.08) -- Kecepatan tap (semakin kecil semakin ngebut)
+            end
+            
+            -- Akhiri dengan FireServer untuk memastikan ikan dapet
+            pcall(function() Events.fishing:FireServer() end)
+            
+            task.wait(Config.CatchDelay)
+            isFishing = false
+        else
+            task.wait(0.1)
+        end
+    end
+end
+
+-- 3. Blatant Loop (Tetap sama, logic ugal-ugalan)
 local function BlatantLoop()
     while fishingActive and Config.BlatantMode do
         if not isFishing then
@@ -129,35 +176,30 @@ local function BlatantLoop()
     end
 end
 
-local function NormalLoop()
-    while fishingActive and not Config.BlatantMode do
-        if not isFishing then
-            isFishing = true
-            CastRod()
-            task.wait(Config.FishDelay)
-            pcall(function() Events.fishing:FireServer() end)
-            task.wait(Config.CatchDelay)
-            isFishing = false
-        else
-            task.wait(0.1)
-        end
-    end
-end
-
 -- Main Loop Starter
 local function ToggleFishing(bool)
     fishingActive = bool
     if bool then
         task.spawn(function()
             while fishingActive do
-                if Config.BlatantMode then BlatantLoop() else NormalLoop() end
+                if Config.BlatantMode then
+                    -- Prioritas 1: Blatant
+                    BlatantLoop() 
+                elseif Config.FishingMode == "Legit" then
+                    -- Prioritas 2: Legit (Tap Tap)
+                    LegitLoop()
+                else
+                    -- Prioritas 3: Instant (Default/Normal)
+                    InstantLoop()
+                end
                 task.wait(0.1)
             end
         end)
-        -- Auto Catch Helper
+        
+        -- Auto Catch Helper (Hanya jalan kalau BUKAN Legit mode, biar ga ganggu tap-tap)
         task.spawn(function()
             while fishingActive do
-                if Config.AutoCatch and not isFishing then
+                if Config.AutoCatch and not isFishing and Config.FishingMode ~= "Legit" then
                     pcall(function() Events.fishing:FireServer() end)
                 end
                 task.wait(Config.CatchDelay)
@@ -269,6 +311,7 @@ local ConfigTab = Window:Tab({ Title = "Configs", Icon = "save" })
 -- >> MAIN SECTION (AUTO FARM)
 local MainSection = MainTab:Section({ Title = "Auto Farm", Icon = "fish-symbol", Opened = true })
 
+-- Toggle Utama
 MainSection:Toggle({
     Title = "Auto Fish",
     Default = Config.AutoFish,
@@ -278,19 +321,24 @@ MainSection:Toggle({
     end
 })
 
-MainSection:Toggle({
-    Title = "⚡ Blatant Mode (3x Faster)",
-    Default = Config.BlatantMode,
+-- Dropdown Mode (Instant vs Legit)
+MainSection:Dropdown({
+    Title = "Fishing Mode",
+    Multi = false,
+    AllowNone = true,
+    Values = { "Instant", "Legit" }, -- Pilihan Mode
     Callback = function(value)
-        Config.BlatantMode = value
+        Config.FishingMode = value
     end
 })
 
+-- Blatant Mode (Checkbox / Toggle Override)
 MainSection:Toggle({
-    Title = "Auto Catch (Spam Reel)",
-    Default = Config.AutoCatch,
+    Title = "⚡ Blatant Mode (Override All)",
+    Description = "Abaikan mode diatas, pakai cara kasar (3x Faster)",
+    Default = Config.BlatantMode,
     Callback = function(value)
-        Config.AutoCatch = value
+        Config.BlatantMode = value
     end
 })
 
