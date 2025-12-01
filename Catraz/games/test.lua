@@ -566,118 +566,113 @@ local RarityMap = {
 Config.FavInterval = 3
 Config.MinRarityNum = 6 -- Default Mythic
 
--- Cache Variables
-local ItemDatabaseCache = {} 
+-- ====================================================================
+--              AUTO FAVORITE LOGIC (FINAL & VERIFIED PATH)
+-- ====================================================================
+
+local ItemInfoCache = {} 
 local ReplionData = nil
+local ItemsFolder = Services.ReplicatedStorage:WaitForChild("Items", 10)
 
--- 1. FUNGSI MENCARI DATABASE ITEM (Untuk Cek Tier/Rarity)
-local function GetItemTier(itemId)
-    if ItemDatabaseCache[itemId] then return ItemDatabaseCache[itemId] end
+-- 1. FUNGSI INTIP DATA ITEM (TIER & TYPE)
+local function GetItemInfo(itemId)
+    local sId = tostring(itemId)
+    if ItemInfoCache[sId] then return ItemInfoCache[sId] end
+    
+    if not ItemsFolder then return {Tier = 0, Type = "Fish"} end
 
-    -- Path Database Item (Berdasarkan hasil analisa sebelumnya)
-    -- Biasanya ada di ReplicatedStorage.Database.Items atau Shared.ItemUtility
-    local potentialPaths = {
-        Services.ReplicatedStorage:FindFirstChild("Database") and Services.ReplicatedStorage.Database:FindFirstChild("Items"),
-        Services.ReplicatedStorage:FindFirstChild("Shared") and Services.ReplicatedStorage.Shared:FindFirstChild("ItemData"),
-    }
+    local moduleScript = ItemsFolder:FindFirstChild(sId)
+    if moduleScript then
+        local success, result = pcall(require, moduleScript)
+        if success and result and result.Data then
+            local info = {
+                Tier = result.Data.Tier or 0,
+                Type = result.Data.Type or "Fish" 
+            }
+            ItemInfoCache[sId] = info
+            return info
+        end
+    end
+    -- Default fallback
+    return {Tier = 0, Type = "Fish"}
+end
 
-    local targetFolder = nil
-    for _, folder in pairs(potentialPaths) do
-        if folder then targetFolder = folder break end
+-- 2. FUNGSI AMBIL INVENTORY (JALUR YANG SUDAH TERBUKTI DI SCREENSHOT)
+local function GetReplionInventory()
+    -- Load Replion Module
+    if not ReplionData then
+        local success, ReplionModule = pcall(function()
+            return require(Services.ReplicatedStorage.Packages.Replion)
+        end)
+        if success and ReplionModule then
+            pcall(function()
+                ReplionData = ReplionModule.Client:GetReplion("Data")
+            end)
+        end
     end
 
-    if targetFolder then
-        -- Cek apakah ada module dengan nama ID tersebut
-        local module = targetFolder:FindFirstChild(tostring(itemId))
-        if module then
-            local success, data = pcall(require, module)
-            if success and data and data.Data then
-                ItemDatabaseCache[itemId] = data.Data.Tier or 0
-                return data.Data.Tier or 0
-            end
+    -- JALUR PASTI BERDASARKAN DEBUG: .Data.Inventory.Items
+    if ReplionData and ReplionData.Data then
+        if ReplionData.Data.Inventory and ReplionData.Data.Inventory.Items then
+            return ReplionData.Data.Inventory.Items
         end
     end
     
-    return 0
-end
-
--- 2. FUNGSI AKSES REPLION (Cara Paling Akurat Ambil Inventory)
-local function GetReplionInventory()
-    -- Jika kita sudah punya objek Replion Data, langsung return isinya
-    if ReplionData then
-        -- Replion biasanya nyimpen data di tabel internal, kita coba akses aman
-        -- Berdasarkan script Backpack tadi, dia pakai method :GetExpect("Key")
-        local success, inv = pcall(function() 
-            return ReplionData:GetExpect("Inventory") 
-        end)
-        if success and inv then return inv end
-    end
-
-    -- Jika belum ada, kita coba ambil
-    local success, ReplionModule = pcall(function()
-        return require(Services.ReplicatedStorage.Packages.Replion)
-    end)
-
-    if success and ReplionModule then
-        -- Kita coba tunggu Replion "Data" muncul (seperti di script Backpack baris 333)
-        local successWait, data = pcall(function()
-            return ReplionModule.Client:GetReplion("Data") -- Pakai GetReplion biar ga yield lama
-        end)
-        
-        if successWait and data then
-            ReplionData = data
-            return ReplionData:GetExpect("Inventory")
-        end
-    end
-
     return {}
 end
 
--- 3. LOGIKA UTAMA AUTO FAVORITE
+-- 3. LOGIKA EKSEKUSI
 local function RunAutoFavorite()
     local inventory = GetReplionInventory()
     local favCount = 0
 
-    if not inventory or next(inventory) == nil then
-        -- Inventory kosong atau gagal diambil
-        return
-    end
+    if not inventory then return end
 
+    -- Loop semua item (Hati-hati, item kamu ada 3000+)
     for _, itemData in pairs(inventory) do
-        -- Validasi Item
-        if itemData.Id and itemData.UUID then
-            -- Cek apakah item sudah dilock/favorit
-            local isLocked = itemData.Favorited or itemData.Locked or false
+        
+        -- Cek validitas data
+        if type(itemData) == "table" and itemData.Id and itemData.UUID then
+            
+            -- Cek status Favorited
+            local isFav = itemData.Favorited or false
 
-            if not isLocked then
-                -- Cek Tier Item
-                local tier = GetItemTier(itemData.Id)
+            if not isFav then
+                -- Ambil Info Tier & Type dari ID
+                local info = GetItemInfo(itemData.Id)
                 
-                -- Jika Tier Ikan >= Tier Pilihan User
-                if tier >= Config.MinRarityNum then
+                -- Cek apakah Tier item ini >= Pilihan User
+                if info.Tier >= Config.MinRarityNum then
+                    
                     pcall(function()
-                        -- Fire Remote Favorite
-                        -- Argumen biasanya UUID string
-                        local args = { itemData.UUID }
+                        -- FIRE REMOTE (UUID + TYPE)
+                        local args = { itemData.UUID, info.Type }
                         Events.favorite:FireServer(unpack(args))
+                        
+                        print("🔒 LOCKED: ID " .. itemData.Id .. " | Type: " .. info.Type)
                     end)
                     
                     favCount = favCount + 1
-                    task.wait(0.05) -- Delay aman
+                    
+                    -- DELAY PENTING! (Karena item kamu 3000, biar ga disconnect)
+                    task.wait(0.2) 
                 end
             end
         end
+        
+        -- Batasi loop per frame biar UI ga beku (Optimization)
+        if favCount > 5 then break end -- Kunci max 5 item per detik biar aman
     end
 
     if favCount > 0 then
-        WindUI:Notify({ Title = "Auto Favorite", Content = "Locked " .. favCount .. " items!", Duration = 3 })
+        WindUI:Notify({ Title = "Auto Favorite", Content = "Locked " .. favCount .. " items!", Duration = 2 })
     end
 end
 
 -- Loop Otomatis
 task.spawn(function()
     while true do
-        task.wait(Config.FavInterval)
+        task.wait(1) -- Interval pengecekan (1 detik)
         if Config.AutoFavorite then
             RunAutoFavorite()
         end
