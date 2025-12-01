@@ -55,7 +55,9 @@ local function SetupEvents()
             -- SHOP EVENTS (Penting!)
             buyBait = net:WaitForChild("RF/PurchaseBait"),
             buyRod = net:WaitForChild("RF/PurchaseFishingRod"),
-            buyMerchant = net:WaitForChild("RF/PurchaseMarketItem")
+            buyMerchant = net:WaitForChild("RF/PurchaseMarketItem"),
+            -- NEW: WEATHER EVENT (Tambahkan ini)
+            buyWeather = net:WaitForChild("RF/PurchaseWeatherEvent")
         }
         print("✅ Events Loaded Successfully!")
     else
@@ -221,6 +223,161 @@ local LOCATIONS = {
     ["Tropical Grove"] = CFrame.new(-2048, 6, 3657),
 }
 
+-- ====================================================================
+--                  EVENT DATA & LOGIC (SMART VERSION)
+-- ====================================================================
+
+-- Database: Koordinat DAN Nama Model untuk Auto-Detect
+local EVENT_DATABASE = {
+    ["Ghost Shark Hunt"] = {
+        TargetNames = {"Ghost Shark", "GhostShark"}, -- Nama model yang dicari di Workspace
+        Coords = {
+            Vector3.new(489.558, -1.35, 25.406), 
+            Vector3.new(-1358.2, -1.35, 4100.55), 
+            Vector3.new(627.859, -1.35, 3798.08)
+        }
+    },
+    ["Megalodon Hunt"] = {
+        TargetNames = {"Megalodon"},
+        Coords = {
+            Vector3.new(-1076.3, -1.4, 1676.19), 
+            Vector3.new(-1191.8, -1.4, 3597.30), 
+            Vector3.new(412.7, -1.4, 4134.39)
+        }
+    },
+    ["Shark Hunt"] = {
+        TargetNames = {"Great White Shark", "Shark"}, 
+        Coords = {
+            Vector3.new(1.65, -1.35, 2095.72), 
+            Vector3.new(1369.94, -1.35, 930.125), 
+            Vector3.new(-1585.5, -1.35, 1242.87), 
+            Vector3.new(-1896.8, -1.35, 2634.37)
+        }
+    },
+    ["Worm Hunt"] = {
+        TargetNames = {"Worm"}, -- Sesuaikan jika nama modelnya beda (cek pake Dex)
+        Coords = {
+            Vector3.new(2190.85, -1.4, 97.57), 
+            Vector3.new(-2450.6, -1.4, 139.73), 
+            Vector3.new(-267.47, -1.4, 5188.53)
+        }
+    },
+    ["Admin - Ghost Worm"] = {
+        TargetNames = {"Ghost Worm"},
+        Coords = { Vector3.new(-327, -1.4, 2422) }
+    },
+    ["Treasure Hunt"] = {
+        TargetNames = {"Shipwreck", "Treasure", "Chest"},
+        Coords = {} -- Tidak ada koordinat statis, full scan
+    }
+}
+
+local FloatBody = nil
+local FloatConnection = nil
+
+-- Fungsi Float/Hover (DIPERBAIKI: Lebih Kuat)
+local function ToggleFloat(bool)
+    local char = LocalPlayer.Character
+    if not char then return end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    local hum = char:FindFirstChild("Humanoid")
+    if not hrp or not hum then return end
+
+    if bool then
+        -- 1. Buat BodyVelocity jika belum ada
+        if not hrp:FindFirstChild("CatrazFloat") then
+            FloatBody = Instance.new("BodyVelocity")
+            FloatBody.Name = "CatrazFloat"
+            FloatBody.Parent = hrp
+            FloatBody.MaxForce = Vector3.new(0, math.huge, 0) -- Tahan Y Axis (Gravitasi)
+            FloatBody.Velocity = Vector3.new(0, 0, 0)
+        end
+        
+        -- 2. Matikan State Humanoid (Biar ga animasi renang/jatuh)
+        hum.PlatformStand = true
+    else
+        -- Matikan Float
+        if hrp:FindFirstChild("CatrazFloat") then
+            hrp.CatrazFloat:Destroy()
+        end
+        if hum then
+            hum.PlatformStand = false
+        end
+        FloatBody = nil
+    end
+end
+
+-- Fungsi Pintar: Cari Model dulu, kalau ga ketemu baru ke Koordinat
+local function SmartTeleportToEvent(eventName)
+    local data = EVENT_DATABASE[eventName]
+    if not data then return end
+
+    local char = LocalPlayer.Character
+    if not char or not char:FindFirstChild("HumanoidRootPart") then return end
+
+    -- TAHAP 1: SCANNING (Cari Model Boss di Workspace)
+    print("🔍 Scanning for models: ", table.concat(data.TargetNames, ", "))
+    local foundModel = nil
+    
+    for _, targetName in ipairs(data.TargetNames) do
+        -- Cari di workspace
+        for _, obj in pairs(workspace:GetDescendants()) do
+            if obj.Name == targetName and (obj:IsA("Model") or obj:IsA("BasePart")) then
+                foundModel = obj
+                break
+            end
+        end
+        if foundModel then break end
+    end
+
+    -- JIKA KETEMU MODELNYA (Active Location Found!)
+    if foundModel then
+        local targetCFrame = foundModel:GetPivot()
+        char.HumanoidRootPart.CFrame = targetCFrame + Vector3.new(0, 35, 0) -- Teleport di atas boss
+        WindUI:Notify({ Title = "Smart Detect", Content = "Found Active " .. foundModel.Name .. "!", Duration = 3 })
+        
+        -- Paksa Nyalakan Fitur Pendukung
+        ToggleFloat(true) 
+        return true -- Sukses
+    end
+
+    -- TAHAP 2: JIKA TIDAK KETEMU, CEK KOORDINAT (Auto-Cycle)
+    -- Script akan teleport ke lokasi satu per satu untuk mengecek
+    if #data.Coords > 0 then
+        WindUI:Notify({ Title = "Searching...", Content = "Model not found via Scan. Checking Spawns...", Duration = 2 })
+        
+        -- Teleport ke lokasi pertama (atau acak, tapi mending urut)
+        -- Kita pakai sistem Loop sederhana
+        task.spawn(function()
+            for i, vec in ipairs(data.Coords) do
+                char.HumanoidRootPart.CFrame = CFrame.new(vec) + Vector3.new(0, 35, 0)
+                ToggleFloat(true) -- Aktifkan float biar ga jatuh pas teleport
+                WindUI:Notify({ Title = "Checking Loc " .. i, Content = "Searching area...", Duration = 1 })
+                
+                task.wait(1.5) -- Tunggu sebentar loading chunk
+                
+                -- Cek lagi apakah ada model di dekat sini?
+                -- (Biasanya kalau kita deketin, modelnya baru spawn/render)
+                local nearby = false
+                for _, targetName in ipairs(data.TargetNames) do
+                    if workspace:FindFirstChild(targetName) then
+                        nearby = true
+                        break
+                    end
+                end
+                
+                if nearby then
+                    WindUI:Notify({ Title = "Found!", Content = "Event is here!", Duration = 3 })
+                    return -- Stop loop, kita sudah sampai
+                end
+            end
+            WindUI:Notify({ Title = "Not Found", Content = "Event might not be spawned yet.", Duration = 3 })
+        end)
+    else
+        WindUI:Notify({ Title = "Failed", Content = "No active model & no coordinates found.", Duration = 2 })
+    end
+end
+
 -- Fungsi CastRod tetap sama
 local function CastRod()
     pcall(function()
@@ -352,6 +509,47 @@ task.spawn(function()
     while true do
         task.wait(Config.SellDelay)
         if Config.AutoSell then pcall(function() Events.sell:InvokeServer() end) end
+    end
+end)
+
+-- ====================================================================
+--                  WEATHER LOGIC
+-- ====================================================================
+
+-- Daftar Cuaca & Harga (Untuk Info Visual)
+local WeatherList = {
+    "Cloudy",       -- 20k
+    "Radiant",      -- 50k
+    "Snow",         -- 15k
+    "Storm",        -- 35k
+    "Wind",         -- 10k
+    "Shark Hunt"    -- 300k
+}
+
+local SelectedWeathers = {} -- Menyimpan pilihan dari Dropdown
+local AutoWeatherActive = false
+
+-- Fungsi Loop Auto Buy
+task.spawn(function()
+    while true do
+        if AutoWeatherActive and #SelectedWeathers > 0 then
+            for _, weatherName in ipairs(SelectedWeathers) do
+                if not AutoWeatherActive then break end -- Stop jika dimatikan di tengah jalan
+                
+                -- Beli Cuaca
+                pcall(function()
+                    Events.buyWeather:InvokeServer(weatherName)
+                    -- Notif kecil biar tau lagi beli
+                    -- print("Buying Weather: " .. weatherName) 
+                end)
+                
+                -- Delay antar pembelian (Supaya uang ga habis instan/spamming)
+                -- Weather biasanya durasinya lama (900 detik), jadi delay agak lama aman.
+                -- Tapi kalau mau 'antri' cuaca, 5 detik cukup.
+                task.wait(5) 
+            end
+        end
+        task.wait(1) -- Cek status setiap detik
     end
 end)
 
@@ -649,6 +847,109 @@ MainSection:Input({
     end
 })
 
+-- ====================================================================
+--                  EVENT FARMING UI (SMART & FIXED)
+-- ====================================================================
+
+local EventSection = MainTab:Section({ Title = "Event Farming", Icon = "globe" })
+
+local selectedEventKey = nil
+local ManualFloatToggleUI = nil
+local AutoFishToggleUI = nil 
+
+-- Dropdown Event
+EventSection:Dropdown({
+    Title = "Select Event",
+    Desc = "Choose active event",
+    Value = nil,
+    Values = (function()
+        local keys = {}
+        for k, v in pairs(EVENT_DATABASE) do table.insert(keys, k) end
+        table.sort(keys)
+        return keys
+    end)(),
+    Multi = false,
+    Callback = function(value)
+        selectedEventKey = value
+    end
+})
+
+-- Tombol Teleport PINTAR
+EventSection:Button({
+    Title = "🚀 Smart Teleport & Farm",
+    Desc = "Auto-Find Active Boss -> Float -> Auto Fish",
+    Callback = function()
+        if not selectedEventKey then
+            WindUI:Notify({ Title = "Error", Content = "Please select an event first!", Duration = 2 })
+            return
+        end
+
+        -- 1. Jalankan Smart Teleport
+        -- Fungsi ini akan mencari model Boss. Kalau ketemu -> Teleport.
+        -- Kalau ga ketemu -> Teleport ke koordinat 1, 2, 3...
+        SmartTeleportToEvent(selectedEventKey)
+
+        -- 2. FORCE ENABLE FEATURES (Perbaikan Bug Float)
+        -- Jangan cuma andalkan UI Callback, panggil fungsi langsung!
+        
+        -- A. Float
+        ToggleFloat(true) 
+        if ManualFloatToggleUI then 
+            ManualFloatToggleUI:SetValue(true) -- Update visual UI biar sinkron
+        end
+
+        -- B. Auto Fish
+        if not Config.AutoFish then
+            Config.AutoFish = true
+            ToggleFishing(true) -- Paksa nyala script mancing
+            
+            -- Update visual UI di Main Tab (kalau variabelnya ketemu)
+            if AutoFishToggleUI then
+                AutoFishToggleUI:SetValue(true)
+            end
+            WindUI:Notify({ Title = "System", Content = "Auto Fish & Float Enabled!", Duration = 2 })
+        end
+    end
+})
+
+-- Toggle Float Manual
+ManualFloatToggleUI = EventSection:Toggle({
+    Title = "Manual Float",
+    Desc = "Keep character in the air",
+    Value = false,
+    Callback = function(state)
+        ToggleFloat(state)
+    end
+})
+
+-- Tombol Scan Manual (Backup kalau Smart Teleport gagal)
+EventSection:Button({
+    Title = "🔍 Force Scan Workspace",
+    Desc = "Try to find ANY event model",
+    Callback = function()
+        -- Scan generic event keywords
+        local keywords = {"Boss", "Shark", "Megalodon", "Meteor", "Chest", "Shipwreck"}
+        local found = false
+        
+        for _, word in ipairs(keywords) do
+            for _, obj in pairs(workspace:GetDescendants()) do
+                if string.find(obj.Name, word) and (obj:IsA("Model") or obj:IsA("BasePart")) then
+                    LocalPlayer.Character.HumanoidRootPart.CFrame = obj:GetPivot() * CFrame.new(0, 35, 0)
+                    ToggleFloat(true)
+                    WindUI:Notify({ Title = "Found", Content = obj.Name, Duration = 2 })
+                    found = true
+                    break
+                end
+            end
+            if found then break end
+        end
+        
+        if not found then
+            WindUI:Notify({ Title = "Failed", Content = "No event models found in range.", Duration = 2 })
+        end
+    end
+})
+
 -- >> SHOP SECTION
 local ShopSection = ShopTab:Section({ Title = "Shop Center", Icon = "store", Opened = true })
 
@@ -800,6 +1101,68 @@ ShopSection:Toggle({
     end
 })
 
+-- ====================================================================
+--                  WEATHER MACHINE UI (MULTI SELECT)
+-- ====================================================================
+
+local ShopSection = ShopTab:Section({ Title = "Weather Buy", Icon = "cloud-lightning", Opened = true })
+
+-- 1. Dropdown Multi Select (Sesuai Docs: Multi=true, Value={})
+ShopSection:Dropdown({
+    Title = "Select Weather(s)",
+    Desc = "Multi-select allowed. Can deselect.",
+    Multi = true, -- BISA PILIH LEBIH DARI 1
+    Value = {},   -- Default kosong (table)
+    Values = WeatherList,
+    Callback = function(values)
+        -- 'values' akan mengembalikan table berisi string, contoh: {"Snow", "Wind"}
+        SelectedWeathers = values
+        
+        -- Debug print untuk memastikan isi table
+        -- print("Selected Weathers:", table.concat(SelectedWeathers, ", "))
+    end
+})
+
+-- 2. Toggle Auto Buy
+ShopSection:Toggle({
+    Title = "Auto Buy Selected Weather",
+    Desc = "Cycles through selection and buys them",
+    Value = false, -- Sesuai Docs WindUI
+    Callback = function(state)
+        AutoWeatherActive = state
+        
+        if state then
+            if #SelectedWeathers == 0 then
+                WindUI:Notify({ Title = "Warning", Content = "Select a weather first!", Duration = 3 })
+            else
+                WindUI:Notify({ Title = "System", Content = "Auto Buying Weather Started...", Duration = 2 })
+            end
+        else
+            WindUI:Notify({ Title = "System", Content = "Auto Buy Stopped.", Duration = 2 })
+        end
+    end
+})
+
+-- 3. Tombol Manual (Buy Once) - Opsional tapi berguna
+ShopSection:Button({
+    Title = "Buy Selected Once",
+    Desc = "Buy all selected weathers one time immediately",
+    Callback = function()
+        if #SelectedWeathers == 0 then
+            WindUI:Notify({ Title = "Error", Content = "Select a weather first!", Duration = 2 })
+            return
+        end
+
+        local boughtCount = 0
+        for _, wName in ipairs(SelectedWeathers) do
+            local success = pcall(function() Events.buyWeather:InvokeServer(wName) end)
+            if success then boughtCount = boughtCount + 1 end
+            task.wait(0.5) -- Delay dikit biar server ga nolak request
+        end
+        
+        WindUI:Notify({ Title = "Shop", Content = "Attempted to buy " .. boughtCount .. " weathers.", Duration = 2 })
+    end
+})
 
 -- >> TELEPORT SECTION
 
