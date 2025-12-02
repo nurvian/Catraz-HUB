@@ -27,6 +27,8 @@ local Config = {
     FishingMode = "Instant",
     AutoCatch = false,
     AutoSell = false,
+    AutoSellMode = "Time", -- "Time" atau "Capacity" (NEW)
+    SellThreshold = 2000,  -- Batas item sebelum dijual (NEW)
     GPUSaver = false,
     FishDelay = 0.9,
     CatchDelay = 0.2,
@@ -220,7 +222,7 @@ local LOCATIONS = {
     ["Sacred Temple"] = CFrame.new(1478, -22, -611),
     ["Ancient Ruins"] = CFrame.new(6097, -586, 4665),
     ["Clasic Island"] = CFrame.new(1232, 10, 2843),
-    ["Iron Cavern"] = CFrame.new(-8899, -582, 157),
+    ["Iron Cavern"] = CFrame.new(-8899, -582, 157), 
     ["Iron Cafe"] = CFrame.new(-8642, -548, 161),
     ["Treasure Room"] = CFrame.new(-3600, -267, -1558),
     ["Sisyphus Statue"] = CFrame.new(-3693, -136, -1044),
@@ -514,11 +516,52 @@ local function ToggleFishing(bool)
     end
 end
 
--- Auto Sell
+-- ====================================================================
+--                  AUTO SELL LOGIC (UPDATED: TIME & CAPACITY)
+-- ====================================================================
+
 task.spawn(function()
     while true do
-        task.wait(Config.SellDelay)
-        if Config.AutoSell then pcall(function() Events.sell:InvokeServer() end) end
+        if Config.AutoSell then
+            if Config.AutoSellMode == "Time" then
+                -- MODE 1: TIME BASED (Jalan setiap X detik)
+                pcall(function() Events.sell:InvokeServer() end)
+                task.wait(Config.SellDelay)
+
+            elseif Config.AutoSellMode == "Capacity" then
+                -- MODE 2: CAPACITY BASED (Cek Inventory Limit)
+                
+                -- Kita pakai fungsi GetReplionInventory yang sudah kamu buat di bawah
+                local inventory = GetReplionInventory() 
+                local currentCount = 0
+                
+                -- Hitung jumlah item (Asumsi inventory Replion berbentuk Array/List)
+                if inventory then
+                    currentCount = #inventory
+                end
+
+                -- Debug print (Opsional, biar tau di F9 console)
+                -- print("Inventory Count: " .. currentCount .. " / " .. Config.SellThreshold)
+
+                if currentCount >= Config.SellThreshold then
+                    WindUI:Notify({ Title = "Auto Sell", Content = "Limit Reached ("..currentCount.."), Selling...", Duration = 2 })
+                    
+                    pcall(function() Events.sell:InvokeServer() end)
+                    
+                    -- Kasih cooldown sedikit setelah jual biar server ga error
+                    task.wait(3) 
+                else
+                    -- Cek lagi setiap 1 detik
+                    task.wait(1)
+                end
+            else
+                -- Fallback jika mode tidak dipilih
+                task.wait(1)
+            end
+        else
+            -- Jika Auto Sell mati, cek lagi setiap 1 detik
+            task.wait(1)
+        end
     end
 end)
 
@@ -1153,12 +1196,58 @@ ShopSection:Button({
     end
 })
 
--- === 4. AUTO SELL ===
+-- ====================================================================
+--                  AUTO SELL UI CONFIGURATION
+-- ====================================================================
+
 ShopSection:Toggle({
-    Title = "Auto Sell All",
-    Default = Config.AutoSell,
+    Title = "Enable Auto Sell",
+    Desc = "Select mode first",
     Callback = function(value)
         Config.AutoSell = value
+    end
+})
+
+-- Dropdown untuk memilih Mode (Waktu atau Kapasitas)
+ShopSection:Dropdown({
+    Title = "Auto Sell Mode",
+    Desc = "Choose condition to trigger sell",
+    Multi = false,
+    AllowNone = true,
+    Value = Config.AutoSellMode,
+    Values = {"Time", "Capacity"},
+    Callback = function(value)
+        Config.AutoSellMode = value
+        WindUI:Notify({ Title = "Mode Changed", Content = "Auto Sell Mode: " .. value, Duration = 2 })
+    end
+})
+
+-- Input untuk Mode TIME (Delay Waktu)
+ShopSection:Input({
+    Title = "Sell Delay (Time Mode)",
+    Desc = "Wait time in seconds (Only for Time Mode)",
+    Type = "Input",
+    Placeholder = "Enter time in second",
+    Callback = function(value)
+        local num = tonumber(value)
+        if num then Config.SellDelay = num end
+    end
+})
+
+-- SLIDER untuk Mode CAPACITY (Batas Inventory)
+-- Sesuai Docs: https://footagesus.github.io/WindUI-Docs/docs/slider
+ShopSection:Slider({
+    Title = "Inventory Threshold (Capacity Mode)",
+    Desc = "Sell when items >= this amount",
+    Value = {
+        Min = 100,      -- Batas minimal (biar ga spam jual pas 1 item)
+        Max = 5000,     -- Batas maksimal inventory (biasanya game 3k-5k)
+        Default = 3000,    -- Default 3000 items
+    },
+    Step = 50,
+    Callback = function(value)
+        Config.SellThreshold = value
+        -- print("New Sell Threshold:", value)
     end
 })
 
