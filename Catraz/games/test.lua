@@ -1,7 +1,6 @@
 --[[
     CATRAZ HUB | FISH IT - INTEGRATED VERSION
     UI Library: WindUI
-    Logic: Auto Fish V4.0 (Blatant Mode)
 ]]
 
 -- ====================================================================
