@@ -17,7 +17,8 @@ local Services = {
 
 local LocalPlayer = Services.Players.LocalPlayer
 local Events = nil
-local GlobalFishNames = {} 
+local AllFishNames = {} 
+local RarityListString = {"Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic", "Secret"}
 local GlobalVariants = {"Shiny", "Big", "Sparkling", "Frozen", "Albino", "Dark", "Electric", "Radioactive", "Negative", "Golden", "Rainbow", "Ghost", "Solar", "Sand"}
 
 local Config = {
@@ -27,16 +28,18 @@ local Config = {
     AutoCatch = false,
     AutoSell = false,
     GPUSaver = false,
-    AutoFavorite = true,
     FishDelay = 0.9,
     CatchDelay = 0.2,
     SellDelay = 30,
     AutoFavorite = false,
     AutoUnfavorite = false, -- Fitur Baru: Auto Unlock sampah
-    FavInterval = 3,
-    WhitelistRarities = {}, -- Menyimpan Tier yang mau disimpan (Contoh: [6]=true)
-    WhitelistNames = {},    -- Menyimpan Nama Ikan
-    WhitelistVariants = {}  -- Menyimpan Variant
+    FavInterval = 2,
+    FavRarities = {}, -- Contoh: {["Mythic"] = true}
+    FavNames = {},    -- Contoh: {["Ghost Shark"] = true}
+    FavVariants = {}, -- Contoh: {["Shiny"] = true}
+    UnfavRarities = {},
+    UnfavNames = {},
+    UnfavVariants = {}
 }
 
 -- ====================================================================
@@ -215,7 +218,7 @@ local LOCATIONS = {
     ["Fisherman Island"] = CFrame.new(35, 17, 2851),
     ["Ancient Jungle"] = CFrame.new(1489, 7, -425),
     ["Sacred Temple"] = CFrame.new(1478, -22, -611),
-    ["Ancuent Ruins"] = CFrame.new(6097, -586, 4665),
+    ["Ancient Ruins"] = CFrame.new(6097, -586, 4665),
     ["Clasic Island"] = CFrame.new(1232, 10, 2843),
     ["Iron Cavern"] = CFrame.new(-8899, -582, 157),
     ["Iron Cafe"] = CFrame.new(-8642, -548, 161),
@@ -574,7 +577,7 @@ Config.FavInterval = 3
 Config.MinRarityNum = 6 -- Default Mythic
 
 -- ====================================================================
---            AUTO FAVORITE LOGIC (ADVANCED FILTER + UNFAV)
+--            AUTO FAVORITE LOGIC (SCANNER DATABASE SYSTEM)
 -- ====================================================================
 
 local ItemInfoCache = {} 
@@ -582,32 +585,32 @@ local ReplionData = nil
 local ItemsFolder = Services.ReplicatedStorage:WaitForChild("Items", 10)
 local DatabaseIndexed = false
 
--- 1. FUNGSI SCANNER DATABASE (UPDATE: AMBIL NAMA)
+-- 1. FUNGSI SCANNER DATABASE (WAJIB JALAN SEKALI DI AWAL)
+-- Kita buka semua file di folder Items untuk mencocokkan ID dengan Tier
 local function IndexItemDatabase()
     if DatabaseIndexed then return end
     
-    print("📚 Indexing Database Item... (Mohon Tunggu)")
-    GlobalFishNames = {} -- Reset list
+    print("📚 Indexing Database Item & Names... (Mohon Tunggu)")
     local count = 0
+    AllFishNames = {} -- Reset list nama
     
     for _, module in pairs(ItemsFolder:GetDescendants()) do
         if module:IsA("ModuleScript") then
             local success, result = pcall(require, module)
             if success and result and result.Data then
-                local id = result.Data.Id
-                local name = result.Data.Name
-                
-                if id then
-                    -- Simpan ke Cache
-                    ItemInfoCache[id] = {
-                        Tier = result.Data.Tier or 0,
-                        Type = result.Data.Type or "Fish",
-                        Name = name or "Unknown"
+                local d = result.Data
+                if d.Id then
+                    -- Simpan Info ke Cache (Rarity angka & Nama String)
+                    ItemInfoCache[d.Id] = {
+                        Tier = d.Tier or 0,
+                        Type = d.Type or "Fish",
+                        Name = d.Name or module.Name, -- Ambil nama item
+                        RarityName = RarityListString[d.Tier] or "Common" -- Konversi tier angka ke nama
                     }
                     
-                    -- Masukkan nama ikan ke list global (untuk Dropdown UI)
-                    if name and result.Data.Type == "Fish" then
-                        table.insert(GlobalFishNames, name)
+                    -- Masukkan nama ke list dropdown (jika belum ada)
+                    if d.Name and not table.find(AllFishNames, d.Name) then
+                        table.insert(AllFishNames, d.Name)
                     end
                     count = count + 1
                 end
@@ -615,107 +618,129 @@ local function IndexItemDatabase()
         end
     end
     
-    table.sort(GlobalFishNames) -- Urutkan Abjad
+    table.sort(AllFishNames) -- Urutkan nama ikan A-Z
     DatabaseIndexed = true
     print("✅ Database Selesai: " .. count .. " item terdaftar.")
 end
 
--- 2. FUNGSI INTIP DATA
+-- 2. FUNGSI INTIP DATA (SEKARANG PAKE CACHE SCANNER)
 local function GetItemInfo(itemId)
+    -- Pastikan Database sudah discan
     if not DatabaseIndexed then IndexItemDatabase() end
-    local sId = tostring(itemId)
-    if ItemInfoCache[sId] then return ItemInfoCache[sId] end
-    return {Tier = 0, Type = "Fish", Name = "Unknown"}
+    
+    -- Ambil langsung dari cache
+    if ItemInfoCache[itemId] then
+        return ItemInfoCache[itemId]
+    end
+    
+    -- Kalau ga ketemu, return default
+    return {Tier = 0, Type = "Fish"}
 end
 
 -- 3. FUNGSI AMBIL INVENTORY
 local function GetReplionInventory()
     if not ReplionData then
-        local success, ReplionModule = pcall(function() return require(Services.ReplicatedStorage.Packages.Replion) end)
-        if success and ReplionModule then pcall(function() ReplionData = ReplionModule.Client:GetReplion("Data") end) end
+        local success, ReplionModule = pcall(function()
+            return require(Services.ReplicatedStorage.Packages.Replion)
+        end)
+        if success and ReplionModule then
+            pcall(function() ReplionData = ReplionModule.Client:GetReplion("Data") end)
+        end
     end
+
     if ReplionData and ReplionData.Data and ReplionData.Data.Inventory then
-        if ReplionData.Data.Inventory.Items then return ReplionData.Data.Inventory.Items else return ReplionData.Data.Inventory end
+        if ReplionData.Data.Inventory.Items then
+            return ReplionData.Data.Inventory.Items
+        else
+            return ReplionData.Data.Inventory
+        end
     end
     return {}
 end
 
--- 4. LOGIKA UTAMA (LOCK & UNLOCK)
-local function RunAutoFavorite()
+-- 4. LOGIKA EKSEKUSI
+local function RunAdvancedSystem()
     local inventory = GetReplionInventory()
-    local actionCount = 0
-
     if not inventory then return end
+
+    local actionCountFav = 0
+    local actionCountUnfav = 0
 
     for _, itemData in pairs(inventory) do
         if type(itemData) == "table" and itemData.Id and itemData.UUID then
             
+            -- Ambil Data Item
+            local info = GetItemInfo(itemData.Id) -- Info dari Database (Nama, Rarity)
+            local currentVariant = itemData.Variant or "None" -- Info Variant dari Inventory user
             local isFav = itemData.Favorited or false
-            local info = GetItemInfo(itemData.Id)
-            local variant = itemData.VariantId -- Bisa nil atau string "Shiny"
             
-            -- === CEK APAKAH ITEM INI HARUS DISIMPAN? ===
-            local shouldKeep = false
-            
-            -- Cek 1: Rarity (Whitelist Mode)
-            if Config.WhitelistRarities[info.Tier] then
-                shouldKeep = true
-            end
-            
-            -- Cek 2: Nama Ikan (Whitelist Mode)
-            if info.Name and Config.WhitelistNames[info.Name] then
-                shouldKeep = true
-            end
-            
-            -- Cek 3: Variant (Whitelist Mode)
-            if variant and Config.WhitelistVariants[variant] then
-                shouldKeep = true
-            end
-            
-            -- === EKSEKUSI ===
-            
-            -- KASUS A: Barang Bagus tapi BELUM di-Fav -> LOCK
-            if shouldKeep and not isFav and Config.AutoFavorite then
-                pcall(function()
-                    if Events and Events.favorite then
-                        local args = { itemData.UUID, info.Type }
-                        Events.favorite:FireServer(unpack(args)) -- Toggle ON
-                        print("🔒 Locked: " .. info.Name .. " (Tier " .. info.Tier .. ")")
-                    end
-                end)
-                actionCount = actionCount + 1
-                task.wait(0.2)
+            -- ====================================================
+            -- LOGIC 1: AUTO FAVORITE (Whitelist)
+            -- ====================================================
+            if Config.AutoFavorite and not isFav then
+                local shouldFav = false
                 
-            -- KASUS B: Barang Sampah tapi SUDAH di-Fav -> UNLOCK (Auto Unfavorite)
-            elseif not shouldKeep and isFav and Config.AutoUnfavorite then
-                pcall(function()
-                    if Events and Events.favorite then
-                        local args = { itemData.UUID, info.Type }
-                        Events.favorite:FireServer(unpack(args)) -- Toggle OFF
-                        print("🔓 Unlocked: " .. info.Name .. " (Trash)")
-                    end
-                end)
-                actionCount = actionCount + 1
-                task.wait(0.2)
+                -- Cek 1: Rarity Match? (Multi Select Logic)
+                if Config.FavRarities[info.RarityName] then shouldFav = true end
+                
+                -- Cek 2: Name Match?
+                if Config.FavNames[info.Name] then shouldFav = true end
+                
+                -- Cek 3: Variant Match?
+                -- (Cek apakah item punya variant, dan variant-nya dicentang di config)
+                if currentVariant ~= "None" and Config.FavVariants[currentVariant] then shouldFav = true end
+                
+                -- EKSEKUSI FAVORITE
+                if shouldFav then
+                    pcall(function()
+                        Events.favorite:FireServer(itemData.UUID, info.Type)
+                        print("🔒 Locked: " .. info.Name .. " | " .. currentVariant)
+                    end)
+                    actionCountFav = actionCountFav + 1
+                    task.wait(0.1) -- Delay kecil biar ga spam
+                end
             end
+
+            -- ====================================================
+            -- LOGIC 2: AUTO UNFAVORITE (Force Unlock)
+            -- ====================================================
+            -- Hanya jalan jika fitur nyala DAN item sedang terkunci
+            if Config.AutoUnfavorite and isFav then
+                local shouldUnfav = false
+                
+                -- Logic sama: Jika cocok dengan kriteria Unfav, kita buka kuncinya
+                if Config.UnfavRarities[info.RarityName] then shouldUnfav = true end
+                if Config.UnfavNames[info.Name] then shouldUnfav = true end
+                if currentVariant ~= "None" and Config.UnfavVariants[currentVariant] then shouldUnfav = true end
+                
+                -- EKSEKUSI UNFAVORITE
+                if shouldUnfav then
+                    pcall(function()
+                        -- FireServer Favorite lagi untuk toggle OFF (biasanya logic game gitu)
+                        -- Atau cek remote kalau ada Unfavorite spesifik, tapi biasanya sama.
+                        Events.favorite:FireServer(itemData.UUID, info.Type)
+                        print("🔓 Unlocked: " .. info.Name .. " | " .. currentVariant)
+                    end)
+                    actionCountUnfav = actionCountUnfav + 1
+                    task.wait(0.1)
+                end
+            end
+            
         end
-        
-        if actionCount > 5 then break end -- Limit per loop biar ga disconnect
-    end
-    
-    if actionCount > 0 then
-        -- WindUI:Notify({ Title = "Manager", Content = "Updated " .. actionCount .. " items.", Duration = 2 })
+        -- Limit loop per detik biar ga lag kalau inventory ribuan
+        if actionCountFav > 5 or actionCountUnfav > 5 then break end
     end
 end
 
--- Loop di Background
+-- Loop Utama (Gabungan)
 task.spawn(function()
     task.wait(2)
-    IndexItemDatabase() -- Index di awal
+    IndexItemDatabase() -- Scan nama ikan dulu buat UI
+    
     while true do
         task.wait(Config.FavInterval)
         if Config.AutoFavorite or Config.AutoUnfavorite then
-            RunAutoFavorite()
+            RunAdvancedSystem()
         end
     end
 end)
@@ -1301,110 +1326,135 @@ TeleportSection:Button({
 local RarityList = {"Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic", "Secret"}
 
 -- >> MISC SECTION
-local MiscSection = MiscTab:Section({ Title = "Advanced Manager", Icon = "settings", Opened = true })
+local MiscSection = MiscTab:Section({ Title = "Miscellaneous", Icon = "settings", Opened = true })
 
--- Toggle Fitur Utama
-MiscSection:Toggle({
-    Title = "Enable Auto Lock",
-    Desc = "Lock items matching filters below",
-    Default = Config.AutoFavorite,
-    Callback = function(v) Config.AutoFavorite = v end
-})
-
-MiscSection:Toggle({
-    Title = "Enable Auto Unlock",
-    Desc = "Unlock items NOT matching filters",
-    Default = Config.AutoUnfavorite,
-    Callback = function(v) Config.AutoUnfavorite = v end
-})
-
--- 1. Dropdown Rarity (Multi Select)
-MiscSection:Dropdown({
-    Title = "Select Rarities to Keep",
-    Desc = "Specific Rarity Only",
-    Multi = true,
-    Values = { "Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic", "Secret" },
-    Default = {}, -- Kosongkan default biar user pilih sendiri
-    Callback = function(values)
-        Config.WhitelistRarities = {} -- Reset
-        for _, rName in ipairs(values) do
-            if RarityMap[rName] then
-                Config.WhitelistRarities[RarityMap[rName]] = true
-            end
-        end
-    end
-})
-
--- 2. Dropdown Nama Ikan (Multi Select + Search)
-local FishDropdown = MiscSection:Dropdown({
-    Title = "Select Specific Fish",
-    Desc = "Search & Select (Overrides Rarity)",
-    Multi = true,
-    SearchBarEnabled = true,
-    Values = GlobalFishNames, 
-    Callback = function(values)
-        Config.WhitelistNames = {} 
-        for _, name in ipairs(values) do
-            Config.WhitelistNames[name] = true 
-        end
-    end
-})
-
--- 3. Dropdown Variant (Multi Select)
-MiscSection:Dropdown({
-    Title = "Select Variants",
-    Desc = "Keep special mutations (e.g. Shiny)",
-    Multi = true,
-    Values = GlobalVariants,
-    Callback = function(values)
-        Config.WhitelistVariants = {}
-        for _, vName in ipairs(values) do
-            Config.WhitelistVariants[vName] = true
-        end
-    end
-})
-
-MiscSection:Div({ Content = "Tools" })
-
--- Tombol Refresh List
-MiscSection:Button({
-    Title = "🔄 Refresh Fish List",
-    Desc = "Click if dropdown is empty",
-    Callback = function()
-        DatabaseIndexed = false
-        IndexItemDatabase()
-        FishDropdown:Refresh(GlobalFishNames)
-        WindUI:Notify({ Title = "System", Content = "Fish list refreshed!", Duration = 1 })
-    end
-})
-
--- Tombol Force Unfavorite
-MiscSection:Button({
-    Title = "⚠️ Force Unlock All Trash",
-    Desc = "Unlock EVERYTHING not in whitelist immediately",
-    Callback = function()
-        -- Kita paksa nyalakan AutoUnfavorite sebentar, jalankan loop, lalu kembalikan
-        local oldState = Config.AutoUnfavorite
-        Config.AutoUnfavorite = true
-        Config.AutoFavorite = false -- Matikan lock dulu biar fokus unlock
-        
-        RunAutoFavorite() -- Jalankan sekali
-        RunAutoFavorite() -- Jalankan lagi jaga-jaga
-        
-        -- Kembalikan settingan
-        Config.AutoUnfavorite = oldState
-        Config.AutoFavorite = true
-        WindUI:Notify({ Title = "System", Content = "Force Unlock Cycle Done.", Duration = 2 })
-    end
-})
-
--- (Tombol GPU Saver biarkan di bawah sini)
+-- 4. GPU Saver
 MiscSection:Toggle({
     Title = "🖥️ GPU Saver (Black Screen)",
     Default = Config.GPUSaver,
     Callback = function(value)
         Config.GPUSaver = value
         ToggleGPU(value)
+    end
+})
+
+-- >> MANAGER SECTION (Ganti Misc Tab jadi lebih rapi)
+local ManagerTab = Window:Tab({ Title = "Manager", Icon = "briefcase" })
+local FavSection = ManagerTab:Section({ Title = "Auto Favorite (Whitelist)", Icon = "lock" })
+local UnfavSection = ManagerTab:Section({ Title = "Auto Unfavorite (Unlock)", Icon = "unlock" })
+
+-- =======================
+-- FAVORITE UI
+-- =======================
+FavSection:Toggle({
+    Title = "Enable Auto Favorite",
+    Default = Config.AutoFavorite,
+    Callback = function(v) Config.AutoFavorite = v end
+})
+
+-- 1. Multi Select Rarity
+FavSection:Dropdown({
+    Title = "Select Rarities to Fav",
+    Multi = true,
+    Values = RarityListString, -- ["Common", "Uncommon", ...]
+    Value = {},
+    AllowNone = true,
+    Callback = function(values)
+        -- Konversi list string ke table lookup biar cepat {["Mythic"]=true}
+        Config.FavRarities = {}
+        for _, v in pairs(values) do Config.FavRarities[v] = true end
+    end
+})
+
+-- 2. Multi Select Variants
+FavSection:Dropdown({
+    Title = "Select Variants to Fav",
+    Multi = true,
+    Values = GlobalVariants, -- ["Shiny", "Big", ...]
+    Value = {},
+    AllowNone = true,
+    Callback = function(values)
+        Config.FavVariants = {}
+        for _, v in pairs(values) do Config.FavVariants[v] = true end
+    end
+})
+
+-- 3. Multi Select Names (Perlu Refresh Button kalau nama belum ke-load)
+local FavNameDropdown = FavSection:Dropdown({
+    Title = "Select Fish Names to Fav",
+    Multi = true,
+    Values = AllFishNames, -- Diisi otomatis oleh Scanner
+    Value = {},
+    SearchBarEnabled = true,
+    AllowNone = true,
+    Callback = function(values)
+        Config.FavNames = {}
+        for _, v in pairs(values) do Config.FavNames[v] = true end
+    end
+})
+
+FavSection:Button({
+    Title = "🔄 Refresh Name List",
+    Desc = "Click if list is empty",
+    Callback = function()
+        IndexItemDatabase() -- Scan ulang
+        FavNameDropdown:Refresh(AllFishNames)
+        WindUI:Notify({ Title = "Updated", Content = "Found " .. #AllFishNames .. " names.", Duration = 2 })
+    end
+})
+
+-- =======================
+-- UNFAVORITE UI
+-- =======================
+UnfavSection:Toggle({
+    Title = "Enable Auto Unfavorite",
+    Desc = "Unlocks items matching selection below",
+    Default = Config.AutoUnfavorite,
+    Callback = function(v) Config.AutoUnfavorite = v end
+})
+
+UnfavSection:Dropdown({
+    Title = "Unfav Rarities",
+    Multi = true,
+    Values = RarityListString,
+    Value = {},
+    AllowNone = true,
+    Callback = function(values)
+        Config.UnfavRarities = {}
+        for _, v in pairs(values) do Config.UnfavRarities[v] = true end
+    end
+})
+
+UnfavSection:Dropdown({
+    Title = "Unfav Variants",
+    Multi = true,
+    Values = GlobalVariants,
+    Value = {},
+    AllowNone = true,
+    Callback = function(values)
+        Config.UnfavVariants = {}
+        for _, v in pairs(values) do Config.UnfavVariants[v] = true end
+    end
+})
+
+local UnfavNameDropdown = UnfavSection:Dropdown({
+    Title = "Unfav Specific Names",
+    Multi = true,
+    Values = AllFishNames,
+    Value = {},
+    SearchBarEnabled = true,
+    AllowNone = true,
+    Callback = function(values)
+        Config.UnfavNames = {}
+        for _, v in pairs(values) do Config.UnfavNames[v] = true end
+    end
+})
+
+UnfavSection:Button({
+    Title = "🔄 Refresh Name List",
+    Callback = function()
+        IndexItemDatabase()
+        UnfavNameDropdown:Refresh(AllFishNames)
     end
 })
 
