@@ -19,6 +19,8 @@ local Events = nil
 local AllFishNames = {} 
 local RarityListString = {"Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic", "Secret"}
 local GlobalVariants = {"Shiny", "Big", "Sparkling", "Frozen", "Albino", "Dark", "Electric", "Radioactive", "Negative", "Golden", "Rainbow", "Ghost", "Solar", "Sand"}
+local ItemInfoCache = {} -- Ini akan jadi kamus: [150] = "Blob Fish"
+local DatabaseIndexed = false -- Penanda apakah kita sudah scan folder Items atau belum
 
 local Config = {
     AutoFish = false,
@@ -68,7 +70,10 @@ local function SetupEvents()
             buyRod = net:WaitForChild("RF/PurchaseFishingRod"),
             buyMerchant = net:WaitForChild("RF/PurchaseMarketItem"),
             -- NEW: WEATHER EVENT (Tambahkan ini)
-            buyWeather = net:WaitForChild("RF/PurchaseWeatherEvent")
+            buyWeather = net:WaitForChild("RF/PurchaseWeatherEvent"),
+            equipInventory = net:WaitForChild("RE/EquipItem"),       -- Langkah 1: Inv -> Hotbar
+            unequipInventory = net:WaitForChild("RE/UnequipItem"),  -- Hotbar -> Inv (NEW!)
+            initiateTrade = net:WaitForChild("RF/InitiateTrade"),    -- Langkah 3: Trade Player
         }
         print("✅ Events Loaded Successfully!")
     else
@@ -76,6 +81,65 @@ local function SetupEvents()
     end
 end
 SetupEvents()
+
+local function IndexItemDatabase()
+    ItemInfoCache = {} -- Reset cache
+    
+    local RepStorage = game:GetService("ReplicatedStorage")
+    -- Kita ambil folder Items dan Totems. Kalau ga ketemu, skip.
+    local folders = {
+        RepStorage:FindFirstChild("Items"),
+        RepStorage:FindFirstChild("Totems")
+    }
+    
+    local count = 0
+    print("Mulai Scan Database Sederhana...")
+
+    for _, folder in pairs(folders) do
+        if folder then
+            -- Scan anak-anaknya
+            for _, module in pairs(folder:GetDescendants()) do
+                if module:IsA("ModuleScript") then
+                    -- Coba baca scriptnya
+                    local success, result = pcall(require, module)
+                    
+                    -- Cek struktur Data yang kamu kirim (Data.Id & Data.Name)
+                    if success and type(result) == "table" and result.Data then
+                        local d = result.Data
+                        
+                        if d.Id and d.Name then
+                            -- [[ INI KUNCINYA ]]
+                            -- Ubah ID angka (150) jadi Teks ("150") biar cocok sama UI
+                            local idText = tostring(d.Id)
+                            
+                            -- Simpan di kamus: ["150"] = "Blob Fish"
+                            ItemInfoCache[idText] = { Name = d.Name }
+                            
+                            count = count + 1
+                        end
+                    end
+                end
+            end
+        end
+    end
+    
+    DatabaseIndexed = true
+    print("✅ Scan Beres! Dapat " .. count .. " nama item.")
+end
+
+-- Variable Cache untuk Trade (WAJIB ADA)
+local TradeCache = {
+    GroupedItems = {},
+    DisplayNames = {}
+}
+
+local TradeConfig = {
+    TargetPlayer = nil,
+    SelectedItemName = nil,
+    TradeAmount = 1,
+    TradeDelay = 1.5 -- Delay aman antar trade
+}
+
 
 -- ====================================================================
 --                  SHOP LOGIC & CONTENT SCANNER
@@ -214,6 +278,12 @@ end)
 local fishingActive = false
 local isFishing = false
 
+-- ====================================================================
+--                  LOCATION & EVENT LOCATION LOGIC DATA
+-- ====================================================================
+
+-- Database: Koordinat DAN Nama Model untuk Auto-Detect
+
 -- Locations
 local LOCATIONS = {
     ["Fisherman Island"] = CFrame.new(35, 17, 2851),
@@ -234,11 +304,6 @@ local LOCATIONS = {
     ["Tropical Grove"] = CFrame.new(-2048, 6, 3657),
 }
 
--- ====================================================================
---                  EVENT DATA & LOGIC (SMART VERSION)
--- ====================================================================
-
--- Database: Koordinat DAN Nama Model untuk Auto-Detect
 local EVENT_DATABASE = {
     ["Ghost Shark Hunt"] = {
         TargetNames = {"Ghost Shark", "GhostShark"}, -- Nama model yang dicari di Workspace
@@ -388,6 +453,10 @@ local function SmartTeleportToEvent(eventName)
         WindUI:Notify({ Title = "Failed", Content = "No active model & no coordinates found.", Duration = 2 })
     end
 end
+
+-- ====================================================================
+--                          FISHING LOGIC
+-- ====================================================================
 
 -- Fungsi CastRod tetap sama
 local function CastRod()
@@ -565,7 +634,167 @@ task.spawn(function()
 end)
 
 -- ====================================================================
---                  WEATHER LOGIC
+--              FIXED INVENTORY READER (REPLION ROBUST)
+-- ====================================================================
+
+-- Fungsi ini meniru cara kerja script debug yang BERHASIL tadi
+local function GetReplionInventory()
+    -- 1. Cari Folder Packages (Kadang di ReplicatedStorage langsung)
+    local RepStorage = game:GetService("ReplicatedStorage")
+    local Pkg = RepStorage:FindFirstChild("Packages")
+    
+    if not Pkg then return nil end
+
+    -- 2. Cari Module Replion (Bisa di root Packages atau di dalam _Index)
+    local ReplionModule = Pkg:FindFirstChild("Replion") 
+    
+    -- Kalau ga ketemu di luar, cari di dalam _Index (Sesuai struktur modern)
+    if not ReplionModule and Pkg:FindFirstChild("_Index") then
+        -- Loop cari yang namanya ada bau-bau "Replion"
+        for _, child in pairs(Pkg._Index:GetDescendants()) do
+            if child.Name == "Replion" and child:IsA("ModuleScript") then
+                ReplionModule = child
+                break
+            end
+        end
+    end
+
+    if not ReplionModule then 
+        warn("⚠️ Module Replion tidak ditemukan!")
+        return nil 
+    end
+
+    -- 3. Load Replion & Ambil Data
+    local success, Lib = pcall(require, ReplionModule)
+    if not success then return nil end
+
+    local Client = Lib.Client
+    if not Client then return nil end
+
+    local DataContainer = Client:GetReplion("Data")
+    if not DataContainer then return nil end
+
+    -- 4. Ambil Items (Sesuai gambar debug kamu: Data.Inventory.Items)
+    if DataContainer.Data and DataContainer.Data.Inventory and DataContainer.Data.Inventory.Items then
+        return DataContainer.Data.Inventory.Items
+    end
+
+    return nil
+end
+
+local function RefreshTradeInventory()
+    local inventory = GetReplionInventory()
+    
+    TradeCache.GroupedItems = {}
+    TradeCache.DisplayNames = {}
+    
+    if not inventory then return {} end
+
+    for _, item in pairs(inventory) do
+        if type(item) == "table" and item.Id then
+            
+            -- [[ PERBAIKAN ]]
+            -- Ambil ID dari tas, ubah jadi String ("150")
+            local searchKey = tostring(item.Id) 
+            local displayName = "Item [" .. searchKey .. "]" -- Default kalau ga ketemu
+            
+            -- Coba cari "150" di kamus
+            if ItemInfoCache[searchKey] then
+                displayName = ItemInfoCache[searchKey].Name
+            end
+
+            -- Tambah Variant
+            if item.Variant and item.Variant ~= "None" then
+                displayName = "[" .. item.Variant .. "] " .. displayName
+            end
+
+            -- Cek Locked
+            local isLocked = item.Favorited or false
+            if isLocked then displayName = displayName .. " 🔒" end
+
+            -- Grouping Logic
+            if not TradeCache.GroupedItems[displayName] then
+                TradeCache.GroupedItems[displayName] = {}
+            end
+
+            table.insert(TradeCache.GroupedItems[displayName], {
+                UUID = item.UUID,
+                Id = item.Id,
+                IsLocked = isLocked
+            })
+        end
+    end
+
+    -- Masukkan ke list UI
+    for name, list in pairs(TradeCache.GroupedItems) do
+        table.insert(TradeCache.DisplayNames, name .. " (x" .. #list .. ")")
+    end
+    
+    table.sort(TradeCache.DisplayNames)
+    return TradeCache.DisplayNames
+end
+
+local function ExecuteTrade()
+    if not TradeConfig.TargetPlayer then return end
+    if not TradeConfig.SelectedItemName then return end
+
+    -- Ambil nama asli dari dropdown (hapus jumlah x5)
+    local realName = string.match(TradeConfig.SelectedItemName, "^(.*)%s%(x%d+%)$") or TradeConfig.SelectedItemName
+    local itemList = TradeCache.GroupedItems[realName]
+    
+    if not itemList then return end
+    
+    -- Ambil player target
+    local targetPlr = game:GetService("Players"):FindFirstChild(TradeConfig.TargetPlayer)
+    if not targetPlr then 
+        WindUI:Notify({Title="Error", Content="Player tidak ditemukan", Duration=2})
+        return 
+    end
+    
+    local amount = math.min(TradeConfig.TradeAmount, #itemList)
+    
+    WindUI:Notify({Title="Trading", Content="Mengirim " .. amount .. " item...", Duration=2})
+    
+    task.spawn(function()
+        for i = 1, amount do
+            local data = itemList[i]
+            if not data then break end
+            
+            -- Jangan trade item yang dikunci
+            if data.IsLocked then
+                print("🔒 Item terkunci, skip: " .. realName)
+            else
+                -- 1. Equip Inventory
+                pcall(function() Events.equipInventory:FireServer(data.UUID, "Fish") end)
+                task.wait(0.3)
+                
+                -- 2. Equip Tangan (Slot 5)
+                pcall(function() Events.equip:FireServer(5) end)
+                task.wait(0.3)
+                
+                -- 3. Trade Request
+                local s = pcall(function() 
+                    Events.initiateTrade:InvokeServer(targetPlr.UserId, data.UUID) 
+                end)
+                
+                if s then
+                    print("📤 Terkirim: " .. realName)
+                else
+                    warn("❌ Gagal Kirim")
+                end
+                
+                -- Delay penting
+                task.wait(TradeConfig.TradeDelay)
+            end
+        end
+        WindUI:Notify({Title="Selesai", Content="Proses Trade Beres", Duration=2})
+        -- Bersihkan tangan
+        pcall(function() Events.unequip:FireServer(5) end)
+    end)
+end
+
+-- ====================================================================
+--                  WEATHER BUY LOGIC
 -- ====================================================================
 
 -- Daftar Cuaca & Harga (Untuk Info Visual)
@@ -606,7 +835,7 @@ task.spawn(function()
 end)
 
 -- ====================================================================
---                  AUTO FAVORITE CONFIG & LOGIC (REPLION VERSION)
+--                  AUTO FAVORITE CONFIG & LOGIC
 -- ====================================================================
 
 -- Mapping Rarity ke Angka
@@ -617,10 +846,6 @@ local RarityMap = {
 
 Config.FavInterval = 3
 Config.MinRarityNum = 6 -- Default Mythic
-
--- ====================================================================
---            AUTO FAVORITE LOGIC (SCANNER DATABASE SYSTEM)
--- ====================================================================
 
 local ItemInfoCache = {} 
 local ReplionData = nil
@@ -947,6 +1172,70 @@ MainSection:Input({
         if num then
             Config.CatchDelay = num
         end
+    end
+})
+
+-- [[ BAGIAN 4: UI TRADE ]]
+-- Helper ambil nama player
+local function GetPlayerNames()
+    local n = {}
+    for _, p in ipairs(game:GetService("Players"):GetPlayers()) do
+        if p ~= game:GetService("Players").LocalPlayer then table.insert(n, p.Name) end
+    end
+    table.sort(n)
+    return n
+end
+
+local MainTrade = MainTab:Section({ Title = "Auto Trade", Icon = "refresh-ccw", Opened = true })
+
+-- Simpan Dropdown ke dalam variable 'PlrDrop'
+local PlrDrop = MainTrade:Dropdown({
+    Title = "Select Player",
+    Values = GetPlayerNames(),
+    Callback = function(v) TradeConfig.TargetPlayer = v end
+})
+MainTrade:Button({ Title = "Refresh Players", Callback = function() PlrDrop:Refresh(GetPlayerNames()) end })
+
+-- Simpan Dropdown ke dalam variable 'ItemDrop'
+local ItemDrop = MainTrade:Dropdown({
+    Title = "Select Item",
+    Values = {}, 
+    SearchBarEnabled = true,
+    Callback = function(v) TradeConfig.SelectedItemName = v end
+})
+
+MainTrade:Button({
+    Title = "🔄 SCAN INVENTORY",
+    Desc = "Klik untuk update list",
+    Callback = function()
+        -- 1. Index Database Nama Dulu
+        IndexItemDatabase()
+        
+        -- 2. Baca Tas Player
+        local list = RefreshTradeInventory()
+        
+        -- 3. Update UI
+        ItemDrop:Refresh(list)
+        
+        WindUI:Notify({
+            Title = "Scan Selesai", 
+            Content = "List diperbarui!", 
+            Duration = 2
+        })
+    end
+})
+-- Slider Jumlah
+MainTrade:Slider({
+    Title = "Jumlah Trade",
+    Value = {Min = 1, Max = 50, Default = 1},
+    Callback = function(v) TradeConfig.TradeAmount = v end
+})
+
+-- Tombol GAS
+MainTrade:Button({
+    Title = "🚀 KIRIM TRADE",
+    Callback = function()
+        ExecuteTrade() -- Panggil logika eksekusi Bagian 3
     end
 })
 
