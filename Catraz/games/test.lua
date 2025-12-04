@@ -1554,4 +1554,4 @@ WindUI:Notify({
     Content = "Catraz Hub Loaded Successfully!",
     Duration = 5,
     Icon = "check"
-})
+})  
