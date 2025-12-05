@@ -71,9 +71,10 @@ local function SetupEvents()
             buyMerchant = net:WaitForChild("RF/PurchaseMarketItem"),
             -- NEW: WEATHER EVENT (Tambahkan ini)
             buyWeather = net:WaitForChild("RF/PurchaseWeatherEvent"),
-            equipInventory = net:WaitForChild("RE/EquipItem"),       -- Langkah 1: Inv -> Hotbar
-            unequipInventory = net:WaitForChild("RE/UnequipItem"),  -- Hotbar -> Inv (NEW!)
-            initiateTrade = net:WaitForChild("RF/InitiateTrade"),    -- Langkah 3: Trade Player
+            equipInventory = net:WaitForChild("RE/EquipItem"), 
+            unequipInventory = net:WaitForChild("RE/UnequipItem"),
+            initiateTrade = net:WaitForChild("RF/InitiateTrade"),  
+            placeTotem = net:WaitForChild("RE/SpawnTotem"),
         }
         print("✅ Events Loaded Successfully!")
     else
@@ -83,7 +84,7 @@ end
 SetupEvents()
 
 -- ====================================================================
---            SMART DATABASE SCANNER (DEEP SCAN ITEMS)
+--            SMART DATABASE SCANNER (DEEP SCAN ITEMS) - UPGRADED
 -- ====================================================================
 
 local function IndexItemDatabase()
@@ -92,28 +93,22 @@ local function IndexItemDatabase()
     FishOnlyNames = {} 
     
     local RS = game:GetService("ReplicatedStorage")
-    -- Kita ambil folder utamanya
     local ItemsFolder = RS:FindFirstChild("Items")
     local TotemsFolder = RS:FindFirstChild("Totems")
     
     local count = 0
+    local totemCount = 0
     
     print("🔍 [DATABASE] Memulai Deep Scan...")
 
-    -- Helper Function: Baca Folder sampai ke akar (Recursive)
     local function ScanDeep(folder, categoryOverride)
         if not folder then return end
-        
-        -- Pakai GetDescendants biar dia baca SEMUA anak cucu folder itu
         local allObjects = folder:GetDescendants()
         
         for i, obj in ipairs(allObjects) do
-            -- Anti Lag: Napas setiap 300 item
             if i % 300 == 0 then task.wait() end
 
-            -- Cek apakah ini ModuleScript pembawa data
             if obj:IsA("ModuleScript") then
-                -- Skip kalau ini Rod (awalan !!!) atau Paket coding
                 if string.sub(obj.Name, 1, 3) == "!!!" or obj:FindFirstAncestor("Packages") then
                     -- skip
                 else
@@ -123,28 +118,36 @@ local function IndexItemDatabase()
                         local d = result.Data
                         
                         if d.Id then
-                            -- PENTING: Paksa ID jadi String biar cocok sama Inventory
                             local idString = tostring(d.Id) 
                             local itemName = d.Name or obj.Name
-                            local itemType = d.Type or categoryOverride or "Unknown"
+                            -- Paksa category jadi "Totems" jika dia ada di folder Totems
+                            local itemType = categoryOverride or d.Type or "Unknown"
                             
-                            -- Simpan ke kamus
+                            -- FIX: Konversi Tier Angka ke Nama Rarity (Buat Auto Fav)
+                            local tierNum = d.Tier or 1
+                            local rarityName = RarityListString[tierNum] or "Common"
+
                             ItemInfoCache[idString] = { 
                                 Name = itemName,
                                 Type = itemType,
-                                Rarity = d.Rarity or "Common"
+                                Rarity = d.Rarity or "Common",
+                                RarityName = rarityName, -- PENTING BUAT AUTO FAV
+                                Tier = tierNum
                             }
                             
-                            -- Masukin ke List Global
                             if not table.find(AllItemNames, itemName) then
                                 table.insert(AllItemNames, itemName)
                             end
                             
-                            -- Masukin ke List Ikan (Buat Auto Fav)
                             if itemType == "Fish" or itemType == "Fishes" then
                                 if not table.find(FishOnlyNames, itemName) then
                                     table.insert(FishOnlyNames, itemName)
                                 end
+                            end
+
+                            -- Debug hitung Totem
+                            if itemType == "Totems" or string.find(itemName, "Totem") then
+                                totemCount = totemCount + 1
                             end
                             
                             count = count + 1
@@ -155,22 +158,13 @@ local function IndexItemDatabase()
         end
     end
 
-    -- 1. Scan Folder Items (Deep Scan)
-    if ItemsFolder then
-        print("   📂 Scanning Items Folder...")
-        ScanDeep(ItemsFolder, nil)
-    end
-    
-    -- 2. Scan Folder Totems (Deep Scan)
-    if TotemsFolder then
-        print("   🗿 Scanning Totems Folder...")
-        ScanDeep(TotemsFolder, "Totem")
-    end
+    if ItemsFolder then ScanDeep(ItemsFolder, nil) end
+    if TotemsFolder then ScanDeep(TotemsFolder, "Totems") end -- Force type Totems
     
     table.sort(AllItemNames)
     table.sort(FishOnlyNames)
     DatabaseIndexed = true
-    print("✅ Database Selesai! Berhasil mengenali " .. count .. " item.")
+    print("✅ Database Selesai! Total: " .. count .. " | Totem: " .. totemCount)
     return count
 end
 
@@ -686,33 +680,67 @@ task.spawn(function()
 end)
 
 -- ====================================================================
---              FIXED INVENTORY READER (REPLION ROBUST)
+--              FIXED INVENTORY READER (WITH FOLDER TAGGING)
 -- ====================================================================
 
 local function GetReplionInventory()
     local RepStorage = game:GetService("ReplicatedStorage")
     local Pkg = RepStorage:FindFirstChild("Packages")
-    if not Pkg then return nil end
-    local ReplionModule = Pkg:FindFirstChild("Replion") 
-    if not ReplionModule and Pkg:FindFirstChild("_Index") then
-        for _, child in pairs(Pkg._Index:GetDescendants()) do
-            if child.Name == "Replion" and child:IsA("ModuleScript") then
-                ReplionModule = child
-                break
-            end
+    local ReplionModule = nil
+    
+    -- 1. Cari Modul Replion
+    if Pkg then
+        ReplionModule = Pkg:FindFirstChild("Replion") or 
+                        (Pkg:FindFirstChild("_Index") and Pkg._Index:FindFirstChild("sleitnick_replion@1.2.0") and Pkg._Index["sleitnick_replion@1.2.0"].Replion)
+    end
+    if not ReplionModule then
+        for _, v in pairs(RepStorage:GetDescendants()) do
+            if v.Name == "Replion" and v:IsA("ModuleScript") then ReplionModule = v break end
         end
     end
-    if not ReplionModule then return nil end
+    
+    if not ReplionModule then return {} end
+
+    -- 2. Ambil Data
     local success, Lib = pcall(require, ReplionModule)
-    if not success then return nil end
-    local Client = Lib.Client
-    if not Client then return nil end
-    local DataContainer = Client:GetReplion("Data")
-    if not DataContainer then return nil end
-    if DataContainer.Data and DataContainer.Data.Inventory and DataContainer.Data.Inventory.Items then
-        return DataContainer.Data.Inventory.Items
+    if success and Lib and Lib.Client then
+        local DataContainer = Lib.Client:GetReplion("Data")
+        
+        if DataContainer and DataContainer.Data and DataContainer.Data.Inventory then
+            local mainInv = DataContainer.Data.Inventory
+            local compiledInventory = {}
+            
+            -- Helper: Clone item dan kasih Tag Asal Folder (INI KUNCINYA!)
+            local function AddList(list, categoryTag)
+                if type(list) == "table" then
+                    for _, item in pairs(list) do
+                        -- Kita buat table baru (Clone) biar aman edit
+                        local newItem = {
+                            Id = item.Id,
+                            UUID = item.UUID,
+                            Quantity = item.Quantity,
+                            Metadata = item.Metadata,
+                            Variant = item.Variant,
+                            Favorited = item.Favorited,
+                            _SourceFolder = categoryTag -- LABEL RAHASIA
+                        }
+                        table.insert(compiledInventory, newItem)
+                    end
+                end
+            end
+            
+            -- 3. SEDOT SEMUA FOLDER DENGAN LABEL
+            AddList(mainInv.Items, "Items")
+            AddList(mainInv.Fish, "Fish")
+            AddList(mainInv.Totems, "Totems")  -- ✅ Item dari sini otomatis ditandai "Totems"
+            AddList(mainInv.Potions, "Potions")
+            AddList(mainInv.Baits, "Baits")
+            AddList(mainInv["Fishing Rods"], "Rods")
+            
+            return compiledInventory
+        end
     end
-    return nil
+    return {}
 end
 
 -- ====================================================================
@@ -720,7 +748,7 @@ end
 -- ====================================================================
 
 local function RefreshTradeInventory()
-    -- 1. Cek Database dulu
+    -- 1. Cek Database (Standard)
     if not DatabaseIndexed then 
         IndexItemDatabase() 
         task.wait(0.1)
@@ -730,73 +758,67 @@ local function RefreshTradeInventory()
     
     TradeCache.GroupedItems = {}
     TradeCache.DisplayNames = {}
-    
-    -- Table bantuan untuk menghitung total item per nama
     local ItemCounts = {} 
     
     if not inventory then return {} end
     
     for _, item in pairs(inventory) do
-        if type(item) == "table" and item.Id and item.UUID then
+        -- [[ FILTER PENTING DISINI ]] --
+        -- Kita hanya izinkan item dari folder "Items" (Enchant Stone) dan "Fish"
+        -- Totem, Pancingan (Rods), dan Umpan (Baits) kita SKIP.
+        local validFolders = {
+            ["Items"] = true, -- Enchant Stones, Keys, dll
+            ["Fish"] = true,  -- Ikan
+            -- ["Potions"] = true, -- Aktifkan kalau mau trade potion juga
+        }
+        
+        -- Cek apakah item ini berasal dari folder yang diizinkan?
+        if item._SourceFolder and validFolders[item._SourceFolder] then
             
-            -- A. TENTUKAN NAMA DASAR
-            local searchKey = tostring(item.Id) 
-            local baseName = "Unknown [" .. searchKey .. "]"
-            
-            -- Cari nama di Database
-            if ItemInfoCache[searchKey] then
-                baseName = ItemInfoCache[searchKey].Name
-            else
-                -- Fallback ke Shop Data
-                for name, id in pairs(ShopData.Rods) do
-                    if tostring(id) == searchKey then baseName = name break end
+            if type(item) == "table" and item.Id and item.UUID then
+                
+                -- A. LOGIKA NAMA (Sama seperti sebelumnya)
+                local searchKey = tostring(item.Id) 
+                local baseName = "Unknown [" .. searchKey .. "]"
+                
+                if ItemInfoCache[searchKey] then
+                    baseName = ItemInfoCache[searchKey].Name
                 end
-                for name, id in pairs(ShopData.Baits) do
-                    if tostring(id) == searchKey then baseName = name break end
+
+                -- Tambahkan Varian
+                if item.Metadata and item.Metadata.VariantId then
+                    baseName = "[" .. tostring(item.Metadata.VariantId) .. "] " .. baseName
+                elseif item.Variant then
+                    baseName = "[" .. item.Variant .. "] " .. baseName
                 end
-            end
+                
+                local isLocked = item.Favorited or false
+                if isLocked then baseName = baseName .. " 🔒" end
 
-            -- B. TAMBAHKAN VARIAN (Shiny, Big, dll)
-            -- Kita masukkan varian ke dalam nama dasar agar "Shiny Carp" terpisah dari "Carp" biasa
-            if item.Metadata and item.Metadata.VariantId then
-                baseName = "[" .. tostring(item.Metadata.VariantId) .. "] " .. baseName
-            elseif item.Variant then
-                baseName = "[" .. item.Variant .. "] " .. baseName
-            end
-            
-            local isLocked = item.Favorited or false
-            if isLocked then baseName = baseName .. " 🔒" end
+                -- B. HITUNG JUMLAH
+                local qty = item.Quantity or 1
+                
+                if not TradeCache.GroupedItems[baseName] then
+                    TradeCache.GroupedItems[baseName] = {}
+                    ItemCounts[baseName] = 0
+                end
 
-            -- C. HITUNG JUMLAH (LOGIKA PENTING DISINI)
-            -- Cek apakah item ini punya quantity (Stack) atau cuma 1
-            local qty = item.Quantity or 1
-            
-            -- Masukkan ke Grup (Untuk dikirim nanti saat trade)
-            if not TradeCache.GroupedItems[baseName] then
-                TradeCache.GroupedItems[baseName] = {}
-                ItemCounts[baseName] = 0 -- Reset hitungan
+                table.insert(TradeCache.GroupedItems[baseName], {
+                    UUID = item.UUID,
+                    Id = item.Id,
+                    IsLocked = isLocked,
+                    Quantity = qty
+                })
+                
+                ItemCounts[baseName] = ItemCounts[baseName] + qty
             end
-
-            -- Tambahkan item ini ke list grupnya
-            table.insert(TradeCache.GroupedItems[baseName], {
-                UUID = item.UUID,
-                Id = item.Id,
-                IsLocked = isLocked,
-                Quantity = qty
-            })
-            
-            -- Akumulasi jumlah total untuk Label
-            ItemCounts[baseName] = ItemCounts[baseName] + qty
         end
     end
 
-    -- D. FINISHING: BIKIN LABEL CANTIK UNTUK DROPDOWN
+    -- C. BIKIN LABEL DROPDOWN
     for name, list in pairs(TradeCache.GroupedItems) do
         local totalAmount = ItemCounts[name] or 0
-        
-        -- Format Label: "Nama Item (xJumlah)"
         local finalLabel = name .. " (x" .. totalAmount .. ")"
-        
         table.insert(TradeCache.DisplayNames, finalLabel)
     end
     
@@ -863,6 +885,175 @@ local function ExecuteTrade()
     end)
 end
 
+-- ====================================================================
+--            TOTEM STRATEGY VARIABLES & FUNCTIONS
+-- ====================================================================
+
+-- 1. Definisikan Cache Khusus Totem (WAJIB ADA)
+local TotemCache = {
+    Names = {},
+    Data = {} 
+}
+
+local TotemConfig = {
+    SelectedTotem = nil,
+    Radius = 50 
+}
+
+local function RefreshTotemList()
+    TotemCache.Names = {}
+    TotemCache.Data = {}
+    
+    -- Temp table buat grup sementara
+    local TempGroups = {} 
+
+    if not DatabaseIndexed then IndexItemDatabase() task.wait(0.1) end
+
+    local inventory = GetReplionInventory() 
+    if not inventory then return {} end
+    
+    local foundCount = 0
+    local validFolders = { ["Totems"] = true } -- Filter folder
+
+    for _, item in pairs(inventory) do
+        -- Cek Filter & Validitas
+        if item._SourceFolder and validFolders[item._SourceFolder] and item.Id and item.UUID then
+            
+            -- 1. Tentukan Nama Dasar
+            local idStr = tostring(item.Id)
+            local baseName = "Totem [" .. idStr .. "]" 
+            
+            if ItemInfoCache[idStr] and ItemInfoCache[idStr].Name then
+                baseName = ItemInfoCache[idStr].Name
+            end
+            
+            -- Tambahkan Tag Folder biar jelas
+            local groupName = "[" .. item._SourceFolder .. "] " .. baseName
+            
+            -- 2. Kumpulkan UUID (STACKING)
+            if not TempGroups[groupName] then
+                TempGroups[groupName] = {
+                    Id = item.Id,
+                    UUIDs = {} -- Kita siapkan wadah list
+                }
+            end
+            
+            -- Masukkan UUID unik item ini ke wadah
+            table.insert(TempGroups[groupName].UUIDs, item.UUID)
+            foundCount = foundCount + 1
+        end
+    end
+
+    -- 3. Finalisasi ke Cache UI
+    for name, data in pairs(TempGroups) do
+        local totalQty = #data.UUIDs
+        local label = name .. " (x" .. totalQty .. ")"
+        
+        table.insert(TotemCache.Names, label)
+        TotemCache.Data[label] = {
+            Id = data.Id,
+            UUIDs = data.UUIDs -- Simpan LIST UUID, bukan cuma satu
+        }
+    end
+
+    table.sort(TotemCache.Names)
+    print("🗿 Refresh Totem: Terdata " .. foundCount .. " item unik.")
+    return TotemCache.Names
+end
+
+local function ExecuteTotemStrategy()
+    print("🚀 [START] Execute 6-Way ZERO GRAVITY...") 
+
+    local selectedName = TotemConfig.SelectedTotem
+    if not selectedName then 
+        WindUI:Notify({Title="Error", Content="Pilih Totem dulu!", Duration=2})
+        return 
+    end
+    
+    -- Refresh cache otomatis jaga-jaga
+    if not TotemCache.Data[selectedName] then RefreshTotemList() task.wait(0.1) end
+
+    local totemData = TotemCache.Data[selectedName]
+    if not totemData or not totemData.UUIDs then 
+        WindUI:Notify({Title="Error", Content="Cache Error. Refresh Totem!", Duration=2})
+        return 
+    end
+
+    local char = LocalPlayer.Character
+    if not char or not char:FindFirstChild("HumanoidRootPart") then return end
+    local hrp = char.HumanoidRootPart
+    local hum = char:FindFirstChild("Humanoid")
+
+    -- [[ 1. EMERGENCY RESET (PENCAIR ES) ]]
+    -- Kita hapus semua pengganggu sebelum mulai
+    hrp.Anchored = false
+    hrp.Velocity = Vector3.new(0,0,0)
+    if hrp:FindFirstChild("TotemHold") then hrp.TotemHold:Destroy() end
+    if hum then hum.PlatformStand = false end
+
+    local originCF = hrp.CFrame
+    local r = TotemConfig.Radius or 50.1
+    
+    local offsets = {
+        {Dir="Atas",   Vec=Vector3.new(0, r, 0)},     
+        {Dir="Bawah",  Vec=Vector3.new(0, -r, 0)},    
+        {Dir="Depan",  Vec=Vector3.new(0, 0, -r)},    
+        {Dir="Belakang",Vec=Vector3.new(0, 0, r)},    
+        {Dir="Kanan",  Vec=Vector3.new(r, 0, 0)},     
+        {Dir="Kiri",   Vec=Vector3.new(-r, 0, 0)}     
+    }
+    
+    WindUI:Notify({Title="Strategy", Content="Mulai (Zero Gravity)...", Duration=2})
+    
+    -- [[ 2. AKTIFKAN ZERO GRAVITY ]]
+    -- Kita pasang BodyVelocity KUAT biar karakter diem di udara tanpa di-Anchor
+    local bv = Instance.new("BodyVelocity")
+    bv.Name = "TotemHold"
+    bv.MaxForce = Vector3.new(100000, 100000, 100000) -- Kekuatan menahan
+    bv.Velocity = Vector3.new(0, 0, 0) -- Diam di tempat
+    bv.Parent = hrp
+    
+    -- Matikan animasi jatuh/jalan
+    if hum then hum.PlatformStand = true end
+    
+    -- Loop Pemasangan
+    for i, data in ipairs(offsets) do
+        local currentUUID = totemData.UUIDs[i]
+        if not currentUUID then break end
+        
+        -- A. EQUIP (Inventory -> Tangan)
+        pcall(function() Events.equipInventory:FireServer(currentUUID, "Totems") end)
+        task.wait(0.1)
+        pcall(function() Events.equip:FireServer(5) end)
+        task.wait(0.4) -- Tunggu tangan ngangkat
+        
+        -- B. TELEPORT
+        local targetPos = originCF.Position + data.Vector
+        hrp.CFrame = CFrame.new(targetPos) -- Pindah sekali aja
+        
+        -- Karena ada BodyVelocity (bv), karakter bakal otomatis ngerem dan diem disitu
+        task.wait(0.5) -- Tunggu posisi stabil & server sync
+        
+        -- C. PASANG
+        pcall(function() Events.placeTotem:FireServer(currentUUID) end)
+        pcall(function() Events.placeTotem:FireServer(currentUUID) end)
+        print("📍 Pasang: " .. data.Dir)
+        
+        task.wait(0.3)
+    end
+    
+    -- [[ 3. BERSIH-BERSIH (PENTING BIAR GA FREEZE SELAMANYA) ]]
+    if bv then bv:Destroy() end -- Hapus penahan
+    if hum then hum.PlatformStand = false end -- Balikin animasi
+    
+    -- Pulang
+    hrp.CFrame = originCF
+    hrp.Velocity = Vector3.new(0,0,0)
+    pcall(function() Events.unequip:FireServer(5) end)
+    
+    RefreshTotemList()
+    WindUI:Notify({Title="Selesai", Content="Cek Totem Kamu!", Duration=3})
+end
 -- ====================================================================
 --                  WEATHER BUY LOGIC
 -- ====================================================================
@@ -1306,6 +1497,44 @@ MainTrade:Button({
     Title = "🚀 KIRIM TRADE",
     Callback = function()
         ExecuteTrade() -- Panggil logika eksekusi Bagian 3
+    end
+})
+
+-- Taruh dibawah Section "Auto Trade"
+
+local TotemSection = MainTab:Section({ Title = "Totem Strategy", Icon = "crosshair", Opened = false })
+
+local TotemDropdown = TotemSection:Dropdown({
+    Title = "Select Totem",
+    Values = {}, -- Nanti diisi refresh
+    Callback = function(v) TotemConfig.SelectedTotem = v end
+})
+
+TotemSection:Button({
+    Title = "🔄 Refresh Totems",
+    Callback = function()
+        -- Pastikan database item discan dulu biar namanya muncul
+        if not DatabaseIndexed then IndexItemDatabase() end
+        task.wait(0.1)
+        
+        local list = RefreshTotemList()
+        TotemDropdown:Refresh(list)
+        WindUI:Notify({Title="Updated", Content="Found "..#list.." totems", Duration=1})
+    end
+})
+
+TotemSection:Slider({
+    Title = "Placement Radius",
+    Desc = "Jarak dari posisi berdiri (Default 50)",
+    Value = {Min = 30, Max = 100, Default = 50},
+    Callback = function(v) TotemConfig.Radius = v end
+})
+
+TotemSection:Button({
+    Title = "🚀 START PLACEMENT (4-Way)",
+    Desc = "Equip -> Teleport 4 Arah -> Place -> Return",
+    Callback = function()
+        ExecuteTotemStrategy()
     end
 })
 
