@@ -82,39 +82,39 @@ local function SetupEvents()
 end
 SetupEvents()
 
-local function IndexItemDatabase()
-    ItemInfoCache = {} -- Reset cache
+-- [[ SCANNER PINTAR (TARGET FOLDER) ]]
+local function IndexItemDatabase(forceUpdate)
+    
+    ItemInfoCache = {} 
+    AllFishNames = {}  
     
     local RepStorage = game:GetService("ReplicatedStorage")
-    -- Kita ambil folder Items dan Totems. Kalau ga ketemu, skip.
+    local count = 0
+    
+    print("🔍 Sedang Scan Ulang Database Game...")
+    
+    -- Target Folder Spesifik (Sesuai info kamu)
     local folders = {
         RepStorage:FindFirstChild("Items"),
         RepStorage:FindFirstChild("Totems")
     }
     
-    local count = 0
-    print("Mulai Scan Database Sederhana...")
-
     for _, folder in pairs(folders) do
         if folder then
-            -- Scan anak-anaknya
             for _, module in pairs(folder:GetDescendants()) do
                 if module:IsA("ModuleScript") then
-                    -- Coba baca scriptnya
                     local success, result = pcall(require, module)
                     
-                    -- Cek struktur Data yang kamu kirim (Data.Id & Data.Name)
                     if success and type(result) == "table" and result.Data then
                         local d = result.Data
-                        
                         if d.Id and d.Name then
-                            -- [[ INI KUNCINYA ]]
-                            -- Ubah ID angka (150) jadi Teks ("150") biar cocok sama UI
-                            local idText = tostring(d.Id)
+                            -- KITA SIMPAN SEBAGAI STRING AGAR KONSISTEN
+                            local idString = tostring(d.Id)
+                            ItemInfoCache[idString] = { Name = d.Name }
                             
-                            -- Simpan di kamus: ["150"] = "Blob Fish"
-                            ItemInfoCache[idText] = { Name = d.Name }
-                            
+                            if not table.find(AllFishNames, d.Name) then
+                                table.insert(AllFishNames, d.Name)
+                            end
                             count = count + 1
                         end
                     end
@@ -123,8 +123,8 @@ local function IndexItemDatabase()
         end
     end
     
-    DatabaseIndexed = true
-    print("✅ Scan Beres! Dapat " .. count .. " nama item.")
+    table.sort(AllFishNames)
+
 end
 
 -- Variable Cache untuk Trade (WAJIB ADA)
@@ -637,20 +637,12 @@ end)
 --              FIXED INVENTORY READER (REPLION ROBUST)
 -- ====================================================================
 
--- Fungsi ini meniru cara kerja script debug yang BERHASIL tadi
 local function GetReplionInventory()
-    -- 1. Cari Folder Packages (Kadang di ReplicatedStorage langsung)
     local RepStorage = game:GetService("ReplicatedStorage")
     local Pkg = RepStorage:FindFirstChild("Packages")
-    
     if not Pkg then return nil end
-
-    -- 2. Cari Module Replion (Bisa di root Packages atau di dalam _Index)
     local ReplionModule = Pkg:FindFirstChild("Replion") 
-    
-    -- Kalau ga ketemu di luar, cari di dalam _Index (Sesuai struktur modern)
     if not ReplionModule and Pkg:FindFirstChild("_Index") then
-        -- Loop cari yang namanya ada bau-bau "Replion"
         for _, child in pairs(Pkg._Index:GetDescendants()) do
             if child.Name == "Replion" and child:IsA("ModuleScript") then
                 ReplionModule = child
@@ -658,33 +650,21 @@ local function GetReplionInventory()
             end
         end
     end
-
-    if not ReplionModule then 
-        warn("⚠️ Module Replion tidak ditemukan!")
-        return nil 
-    end
-
-    -- 3. Load Replion & Ambil Data
+    if not ReplionModule then return nil end
     local success, Lib = pcall(require, ReplionModule)
     if not success then return nil end
-
     local Client = Lib.Client
     if not Client then return nil end
-
     local DataContainer = Client:GetReplion("Data")
     if not DataContainer then return nil end
-
-    -- 4. Ambil Items (Sesuai gambar debug kamu: Data.Inventory.Items)
     if DataContainer.Data and DataContainer.Data.Inventory and DataContainer.Data.Inventory.Items then
         return DataContainer.Data.Inventory.Items
     end
-
     return nil
 end
 
 local function RefreshTradeInventory()
     local inventory = GetReplionInventory()
-    
     TradeCache.GroupedItems = {}
     TradeCache.DisplayNames = {}
     
@@ -692,44 +672,30 @@ local function RefreshTradeInventory()
 
     for _, item in pairs(inventory) do
         if type(item) == "table" and item.Id then
+            -- [[ CONVERT ID TO STRING BIAR COCOK DENGAN OFFLINE DB ]]
+            local searchKey = tostring(item.Id)
+            local displayName = "Item [" .. searchKey .. "]"
             
-            -- [[ PERBAIKAN ]]
-            -- Ambil ID dari tas, ubah jadi String ("150")
-            local searchKey = tostring(item.Id) 
-            local displayName = "Item [" .. searchKey .. "]" -- Default kalau ga ketemu
-            
-            -- Coba cari "150" di kamus
-            if ItemInfoCache[searchKey] then
+            -- Cek di Database
+            if ItemInfoCache[searchKey] and ItemInfoCache[searchKey].Name then
                 displayName = ItemInfoCache[searchKey].Name
             end
 
-            -- Tambah Variant
             if item.Variant and item.Variant ~= "None" then
                 displayName = "[" .. item.Variant .. "] " .. displayName
             end
 
-            -- Cek Locked
             local isLocked = item.Favorited or false
             if isLocked then displayName = displayName .. " 🔒" end
 
-            -- Grouping Logic
-            if not TradeCache.GroupedItems[displayName] then
-                TradeCache.GroupedItems[displayName] = {}
-            end
-
-            table.insert(TradeCache.GroupedItems[displayName], {
-                UUID = item.UUID,
-                Id = item.Id,
-                IsLocked = isLocked
-            })
+            if not TradeCache.GroupedItems[displayName] then TradeCache.GroupedItems[displayName] = {} end
+            table.insert(TradeCache.GroupedItems[displayName], { UUID = item.UUID, Id = item.Id, IsLocked = isLocked })
         end
     end
 
-    -- Masukkan ke list UI
     for name, list in pairs(TradeCache.GroupedItems) do
         table.insert(TradeCache.DisplayNames, name .. " (x" .. #list .. ")")
     end
-    
     table.sort(TradeCache.DisplayNames)
     return TradeCache.DisplayNames
 end
