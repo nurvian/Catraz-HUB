@@ -16,10 +16,8 @@ local Services = {
 
 local LocalPlayer = Services.Players.LocalPlayer
 local Events = nil
-local AllFishNames = {} 
 local RarityListString = {"Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic", "Secret"}
 local GlobalVariants = {"Shiny", "Big", "Sparkling", "Frozen", "Albino", "Dark", "Electric", "Radioactive", "Negative", "Golden", "Rainbow", "Ghost", "Solar", "Sand"}
-local ItemInfoCache = {} -- Ini akan jadi kamus: [150] = "Blob Fish"
 local DatabaseIndexed = false -- Penanda apakah kita sudah scan folder Items atau belum
 
 local Config = {
@@ -82,49 +80,188 @@ local function SetupEvents()
 end
 SetupEvents()
 
--- [[ SCANNER PINTAR (TARGET FOLDER) ]]
-local function IndexItemDatabase(forceUpdate)
+-- ====================================================================
+--            FIXED LOGIC: SMART SCANNER & DEEP INVENTORY
+-- ====================================================================
+
+-- Variable Global Baru (Untuk misahin Ikan vs Barang Lain)
+local AllItemNames = {}   -- Isinya SEMUA (Ikan, Pancingan, Umpan, dll) - Untuk Trade
+local FishOnlyNames = {}  -- Isinya CUMA IKAN - Untuk Auto Favorite
+local ItemInfoCache = {}  -- Database ID -> Nama
+
+-- 1. FUNGSI CARI MODUL REPLION (Anti-Gagal)
+local function GetReplionClient()
+    local RS = game:GetService("ReplicatedStorage")
+    local Pkg = RS:FindFirstChild("Packages")
     
-    ItemInfoCache = {} 
-    AllFishNames = {}  
+    -- Cari modul Replion dimanapun dia berada
+    local ReplionModule = nil
     
-    local RepStorage = game:GetService("ReplicatedStorage")
-    local count = 0
+    -- Cek path standar
+    if Pkg and Pkg:FindFirstChild("Replion") then
+        ReplionModule = Pkg.Replion
+    elseif Pkg and Pkg:FindFirstChild("_Index") then
+        -- Cek dalam _Index (biasanya wally package manager taro disini)
+        for _, v in pairs(Pkg._Index:GetDescendants()) do
+            if v.Name == "Replion" and v:IsA("ModuleScript") then
+                ReplionModule = v
+                break
+            end
+        end
+    end
     
-    print("🔍 Sedang Scan Ulang Database Game...")
-    
-    -- Target Folder Spesifik (Sesuai info kamu)
-    local folders = {
-        RepStorage:FindFirstChild("Items"),
-        RepStorage:FindFirstChild("Totems")
-    }
-    
-    for _, folder in pairs(folders) do
-        if folder then
-            for _, module in pairs(folder:GetDescendants()) do
-                if module:IsA("ModuleScript") then
-                    local success, result = pcall(require, module)
+    -- Kalau masih ga ketemu, scan global (terakhir)
+    if not ReplionModule then
+        for _, v in pairs(RS:GetDescendants()) do
+            if v.Name == "Replion" and v:IsA("ModuleScript") then
+                ReplionModule = v
+                break
+            end
+        end
+    end
+
+    if ReplionModule then
+        local s, r = pcall(require, ReplionModule)
+        if s and r and r.Client then
+            return r.Client
+        end
+    end
+    warn("❌ Modul Replion Client Gagal Diload!")
+    return nil
+end
+
+-- 2. FUNGSI BACA INVENTORY (Metode Brute Force)
+local function GetReplionInventory()
+    local Client = GetReplionClient()
+    if not Client then return {} end
+
+    -- Kita tidak menebak nama "Data". Kita cari Replion yang PUNYA Inventory.
+    -- Client._replions adalah daftar semua data yang masuk ke player
+    if Client._replions then
+        for replionName, replionObject in pairs(Client._replions) do
+            -- Cek apakah replion ini punya data inventory
+            if replionObject.Data and type(replionObject.Data) == "table" then
+                if replionObject.Data.Inventory then
+                    -- KETEMU!
+                    -- print("✅ Inventory ditemukan di Replion: " .. replionName)
+                    local inv = replionObject.Data.Inventory
                     
-                    if success and type(result) == "table" and result.Data then
-                        local d = result.Data
-                        if d.Id and d.Name then
-                            -- KITA SIMPAN SEBAGAI STRING AGAR KONSISTEN
-                            local idString = tostring(d.Id)
-                            ItemInfoCache[idString] = { Name = d.Name }
-                            
-                            if not table.find(AllFishNames, d.Name) then
-                                table.insert(AllFishNames, d.Name)
-                            end
-                            count = count + 1
-                        end
-                    end
+                    -- Handle struktur data v1 (Inventory.Items) atau v2 (Inventory langsung array)
+                    if inv.Items then return inv.Items end
+                    return inv
                 end
             end
         end
     end
     
-    table.sort(AllFishNames)
+    warn("⚠️ Replion Inventory tidak ditemukan (Mungkin belum load/Login)")
+    return {}
+end
 
+-- 3. FUNGSI SCAN DATABASE (Filter Ikan vs Semua)
+local function IndexItemDatabase()
+    ItemInfoCache = {} 
+    AllItemNames = {}
+    FishOnlyNames = {} -- Reset list ikan
+    
+    local RepStorage = game:GetService("ReplicatedStorage")
+    local count = 0
+    
+    print("🔍 [SCAN] Memulai scan database item...")
+    
+    for _, obj in pairs(RepStorage:GetDescendants()) do
+        if obj:IsA("ModuleScript") 
+           and not obj:FindFirstAncestor("Packages") 
+           and not obj:FindFirstAncestor("_Index") then
+            
+            local success, result = pcall(require, obj)
+            
+            if success and type(result) == "table" and result.Data then
+                local d = result.Data
+                
+                if d.Id then
+                    local idString = tostring(d.Id)
+                    local itemName = d.Name or obj.Name
+                    local itemType = d.Type or "Unknown" -- Ambil Tipe Item
+                    
+                    ItemInfoCache[idString] = { 
+                        Name = itemName,
+                        Type = itemType
+                    }
+                    
+                    -- 1. Masukkan ke list SEMUA (Untuk Trade)
+                    if not table.find(AllItemNames, itemName) then
+                        table.insert(AllItemNames, itemName)
+                    end
+                    
+                    -- 2. Masukkan ke list IKAN SAJA (Untuk Auto Fav)
+                    -- Biasanya tipe ikan itu "Fish" atau "Fishes"
+                    if itemType == "Fish" or itemType == "Fishes" then
+                        if not table.find(FishOnlyNames, itemName) then
+                            table.insert(FishOnlyNames, itemName)
+                        end
+                    end
+                    
+                    count = count + 1
+                end
+            end
+        end
+    end
+    
+    table.sort(AllItemNames)
+    table.sort(FishOnlyNames)
+    DatabaseIndexed = true
+    print("✅ Scan Selesai. Total: " .. count .. " | Ikan: " .. #FishOnlyNames)
+    return count
+end
+
+-- 4. FUNGSI REFRESH TRADE (Sekarang pakai AllItemNames & Inventory Brute Force)
+local function RefreshTradeInventory()
+    local inventory = GetReplionInventory() -- Panggil fungsi brute force
+    
+    TradeCache.GroupedItems = {}
+    TradeCache.DisplayNames = {}
+    
+    if not inventory or #inventory == 0 then 
+        warn("⚠️ Inventory kosong saat refresh trade.")
+        return {} 
+    end
+
+    for _, item in pairs(inventory) do
+        if type(item) == "table" and item.Id then
+            local searchKey = tostring(item.Id) 
+            local displayName = "Item [" .. searchKey .. "]" -- Default
+            
+            -- Cek Database
+            if ItemInfoCache[searchKey] then
+                displayName = ItemInfoCache[searchKey].Name
+            end
+
+            if item.Variant and item.Variant ~= "None" then
+                displayName = "[" .. item.Variant .. "] " .. displayName
+            end
+
+            local isLocked = item.Favorited or false
+            if isLocked then displayName = displayName .. " 🔒" end
+
+            if not TradeCache.GroupedItems[displayName] then
+                TradeCache.GroupedItems[displayName] = {}
+            end
+
+            table.insert(TradeCache.GroupedItems[displayName], {
+                UUID = item.UUID,
+                Id = item.Id,
+                IsLocked = isLocked
+            })
+        end
+    end
+
+    for name, list in pairs(TradeCache.GroupedItems) do
+        table.insert(TradeCache.DisplayNames, name .. " (x" .. #list .. ")")
+    end
+    
+    table.sort(TradeCache.DisplayNames)
+    return TradeCache.DisplayNames
 end
 
 -- Variable Cache untuk Trade (WAJIB ADA)
@@ -636,70 +773,6 @@ end)
 -- ====================================================================
 --              FIXED INVENTORY READER (REPLION ROBUST)
 -- ====================================================================
-
-local function GetReplionInventory()
-    local RepStorage = game:GetService("ReplicatedStorage")
-    local Pkg = RepStorage:FindFirstChild("Packages")
-    if not Pkg then return nil end
-    local ReplionModule = Pkg:FindFirstChild("Replion") 
-    if not ReplionModule and Pkg:FindFirstChild("_Index") then
-        for _, child in pairs(Pkg._Index:GetDescendants()) do
-            if child.Name == "Replion" and child:IsA("ModuleScript") then
-                ReplionModule = child
-                break
-            end
-        end
-    end
-    if not ReplionModule then return nil end
-    local success, Lib = pcall(require, ReplionModule)
-    if not success then return nil end
-    local Client = Lib.Client
-    if not Client then return nil end
-    local DataContainer = Client:GetReplion("Data")
-    if not DataContainer then return nil end
-    if DataContainer.Data and DataContainer.Data.Inventory and DataContainer.Data.Inventory.Items then
-        return DataContainer.Data.Inventory.Items
-    end
-    return nil
-end
-
-local function RefreshTradeInventory()
-    local inventory = GetReplionInventory()
-    TradeCache.GroupedItems = {}
-    TradeCache.DisplayNames = {}
-    
-    if not inventory then return {} end
-
-    for _, item in pairs(inventory) do
-        if type(item) == "table" and item.Id then
-            -- [[ CONVERT ID TO STRING BIAR COCOK DENGAN OFFLINE DB ]]
-            local searchKey = tostring(item.Id)
-            local displayName = "Item [" .. searchKey .. "]"
-            
-            -- Cek di Database
-            if ItemInfoCache[searchKey] and ItemInfoCache[searchKey].Name then
-                displayName = ItemInfoCache[searchKey].Name
-            end
-
-            if item.Variant and item.Variant ~= "None" then
-                displayName = "[" .. item.Variant .. "] " .. displayName
-            end
-
-            local isLocked = item.Favorited or false
-            if isLocked then displayName = displayName .. " 🔒" end
-
-            if not TradeCache.GroupedItems[displayName] then TradeCache.GroupedItems[displayName] = {} end
-            table.insert(TradeCache.GroupedItems[displayName], { UUID = item.UUID, Id = item.Id, IsLocked = isLocked })
-        end
-    end
-
-    for name, list in pairs(TradeCache.GroupedItems) do
-        table.insert(TradeCache.DisplayNames, name .. " (x" .. #list .. ")")
-    end
-    table.sort(TradeCache.DisplayNames)
-    return TradeCache.DisplayNames
-end
-
 local function ExecuteTrade()
     if not TradeConfig.TargetPlayer then return end
     if not TradeConfig.SelectedItemName then return end
@@ -818,44 +891,6 @@ local ReplionData = nil
 local ItemsFolder = Services.ReplicatedStorage:WaitForChild("Items", 10)
 local DatabaseIndexed = false
 
--- 1. FUNGSI SCANNER DATABASE (WAJIB JALAN SEKALI DI AWAL)
--- Kita buka semua file di folder Items untuk mencocokkan ID dengan Tier
-local function IndexItemDatabase()
-    if DatabaseIndexed then return end
-    
-    print("📚 Indexing Database Item & Names... (Mohon Tunggu)")
-    local count = 0
-    AllFishNames = {} -- Reset list nama
-    
-    for _, module in pairs(ItemsFolder:GetDescendants()) do
-        if module:IsA("ModuleScript") then
-            local success, result = pcall(require, module)
-            if success and result and result.Data then
-                local d = result.Data
-                if d.Id then
-                    -- Simpan Info ke Cache (Rarity angka & Nama String)
-                    ItemInfoCache[d.Id] = {
-                        Tier = d.Tier or 0,
-                        Type = d.Type or "Fish",
-                        Name = d.Name or module.Name, -- Ambil nama item
-                        RarityName = RarityListString[d.Tier] or "Common" -- Konversi tier angka ke nama
-                    }
-                    
-                    -- Masukkan nama ke list dropdown (jika belum ada)
-                    if d.Name and not table.find(AllFishNames, d.Name) then
-                        table.insert(AllFishNames, d.Name)
-                    end
-                    count = count + 1
-                end
-            end
-        end
-    end
-    
-    table.sort(AllFishNames) -- Urutkan nama ikan A-Z
-    DatabaseIndexed = true
-    print("✅ Database Selesai: " .. count .. " item terdaftar.")
-end
-
 -- 2. FUNGSI INTIP DATA (SEKARANG PAKE CACHE SCANNER)
 local function GetItemInfo(itemId)
     -- Pastikan Database sudah discan
@@ -903,7 +938,7 @@ local function RunAdvancedSystem()
         if type(itemData) == "table" and itemData.Id and itemData.UUID then
             
             -- Ambil Data Item
-            local info = GetItemInfo(itemData.Id) -- Info dari Database (Nama, Rarity)
+            local info = GetItemInfo(tostring(itemData.Id)) -- Info dari Database (Nama, Rarity)
             local currentVariant = itemData.Variant or "None" -- Info Variant dari Inventory user
             local isFav = itemData.Favorited or false
             
@@ -1170,24 +1205,24 @@ local ItemDrop = MainTrade:Dropdown({
     Callback = function(v) TradeConfig.SelectedItemName = v end
 })
 
+-- [[ 3. UPDATE TOMBOL SCAN INI ]]
 MainTrade:Button({
     Title = "🔄 SCAN INVENTORY",
-    Desc = "Klik untuk update list",
+    Desc = "Klik untuk update nama & list item",
     Callback = function()
-        -- 1. Index Database Nama Dulu
-        IndexItemDatabase()
+        -- 1. Scan Database dulu
+        local count = IndexItemDatabase()
         
-        -- 2. Baca Tas Player
+        -- 2. Tunggu sebentar biar database siap (PENTING)
+        task.wait(0.2)
+        
+        -- 3. Baca Tas Player dan Cocokkan
         local list = RefreshTradeInventory()
         
-        -- 3. Update UI
+        -- 4. Update Dropdown
         ItemDrop:Refresh(list)
         
-        WindUI:Notify({
-            Title = "Scan Selesai", 
-            Content = "List diperbarui!", 
-            Duration = 2
-        })
+        WindUI:Notify({ Title = "Scan Selesai", Content = "Database: " .. count .. " | Tas: " .. #list, Duration = 2 })
     end
 })
 -- Slider Jumlah
@@ -1726,7 +1761,7 @@ FavSection:Dropdown({
 local FavNameDropdown = FavSection:Dropdown({
     Title = "Select Fish Names to Fav",
     Multi = true,
-    Values = AllFishNames, -- Diisi otomatis oleh Scanner
+    Values = FishOnlyNames, -- << GANTI INI (Dulu AllFishNames)
     Value = {},
     SearchBarEnabled = true,
     AllowNone = true,
@@ -1738,11 +1773,11 @@ local FavNameDropdown = FavSection:Dropdown({
 
 FavSection:Button({
     Title = "🔄 Refresh Name List",
-    Desc = "Click if list is empty",
+    Desc = "Update list ikan",
     Callback = function()
-        IndexItemDatabase() -- Scan ulang
-        FavNameDropdown:Refresh(AllFishNames)
-        WindUI:Notify({ Title = "Updated", Content = "Found " .. #AllFishNames .. " names.", Duration = 2 })
+        IndexItemDatabase() 
+        FavNameDropdown:Refresh(FishOnlyNames) -- << GANTI INI JUGA
+        WindUI:Notify({ Title = "Updated", Content = "Found " .. #FishOnlyNames .. " fish.", Duration = 2 })
     end
 })
 
