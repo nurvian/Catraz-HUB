@@ -962,7 +962,7 @@ local function RefreshTotemList()
 end
 
 local function ExecuteTotemStrategy()
-    print("🚀 [START] Execute 6-Way ZERO GRAVITY...") 
+    print("🚀 [START] Execute 4-Way STAND & FREEZE Strategy...") 
 
     local selectedName = TotemConfig.SelectedTotem
     if not selectedName then 
@@ -970,89 +970,118 @@ local function ExecuteTotemStrategy()
         return 
     end
     
-    -- Refresh cache otomatis jaga-jaga
-    if not TotemCache.Data[selectedName] then RefreshTotemList() task.wait(0.1) end
-
     local totemData = TotemCache.Data[selectedName]
     if not totemData or not totemData.UUIDs then 
-        WindUI:Notify({Title="Error", Content="Cache Error. Refresh Totem!", Duration=2})
+        WindUI:Notify({Title="Error", Content="Data Cache Kosong!", Duration=2})
         return 
+    end
+    
+    local availableStock = #totemData.UUIDs
+    if availableStock < 4 then
+        WindUI:Notify({Title="Kurang Stok", Content="Stok kamu: " .. availableStock .. " (Butuh 4)", Duration=3})
     end
 
     local char = LocalPlayer.Character
     if not char or not char:FindFirstChild("HumanoidRootPart") then return end
     local hrp = char.HumanoidRootPart
-    local hum = char:FindFirstChild("Humanoid")
-
-    -- [[ 1. EMERGENCY RESET (PENCAIR ES) ]]
-    -- Kita hapus semua pengganggu sebelum mulai
+    
+    -- 1. BERSIHKAN STATUS
     hrp.Anchored = false
     hrp.Velocity = Vector3.new(0,0,0)
-    if hrp:FindFirstChild("TotemHold") then hrp.TotemHold:Destroy() end
-    if hum then hum.PlatformStand = false end
-
+    
     local originCF = hrp.CFrame
     local r = TotemConfig.Radius or 50.1
     
+    -- FORMASI 4 ARAH SAJA (Depan, Belakang, Kanan, Kiri)
     local offsets = {
-        {Dir="Atas",   Vec=Vector3.new(0, r, 0)},     
-        {Dir="Bawah",  Vec=Vector3.new(0, -r, 0)},    
-        {Dir="Depan",  Vec=Vector3.new(0, 0, -r)},    
-        {Dir="Belakang",Vec=Vector3.new(0, 0, r)},    
-        {Dir="Kanan",  Vec=Vector3.new(r, 0, 0)},     
-        {Dir="Kiri",   Vec=Vector3.new(-r, 0, 0)}     
+        {Dir="Depan",    Vector=Vector3.new(0, 0, -r)},    
+        {Dir="Belakang", Vector=Vector3.new(0, 0, r)},    
+        {Dir="Kanan",    Vector=Vector3.new(r, 0, 0)},     
+        {Dir="Kiri",     Vector=Vector3.new(-r, 0, 0)}     
     }
     
-    WindUI:Notify({Title="Strategy", Content="Mulai (Zero Gravity)...", Duration=2})
+    WindUI:Notify({Title="Strategy", Content="Memasang 4 Arah (Platform)...", Duration=3})
     
-    -- [[ 2. AKTIFKAN ZERO GRAVITY ]]
-    -- Kita pasang BodyVelocity KUAT biar karakter diem di udara tanpa di-Anchor
-    local bv = Instance.new("BodyVelocity")
-    bv.Name = "TotemHold"
-    bv.MaxForce = Vector3.new(100000, 100000, 100000) -- Kekuatan menahan
-    bv.Velocity = Vector3.new(0, 0, 0) -- Diam di tempat
-    bv.Parent = hrp
+    local createdParts = {} 
     
-    -- Matikan animasi jatuh/jalan
-    if hum then hum.PlatformStand = true end
-    
-    -- Loop Pemasangan
+    -- FUNGSI BIKIN PIJAKAN PADAT
+    local function CreatePlatform(position)
+        local p = Instance.new("Part")
+        p.Name = "TotemPlatform"
+        p.Size = Vector3.new(6, 1, 6) -- Luas biar gampang diinjek
+        -- Taruh 3.5 stud di bawah target (Pas di telapak kaki)
+        p.Position = position - Vector3.new(0, 3.5, 0) 
+        p.Anchored = true
+        p.CanCollide = true -- WAJIB TRUE BIAR BISA DIPIJAK
+        p.Transparency = 0.5 
+        p.Color = Color3.fromRGB(0, 255, 0) -- Hijau (Debug)
+        p.Parent = workspace
+        table.insert(createdParts, p)
+        return p
+    end
+
+    -- ====================================================
+    -- LOOPING
+    -- ====================================================
     for i, data in ipairs(offsets) do
         local currentUUID = totemData.UUIDs[i]
         if not currentUUID then break end
         
-        -- A. EQUIP (Inventory -> Tangan)
+        -- 1. EQUIP DULU
         pcall(function() Events.equipInventory:FireServer(currentUUID, "Totems") end)
         task.wait(0.1)
         pcall(function() Events.equip:FireServer(5) end)
-        task.wait(0.4) -- Tunggu tangan ngangkat
+        task.wait(0.4) 
         
-        -- B. TELEPORT
+        -- 2. HITUNG TARGET
         local targetPos = originCF.Position + data.Vector
-        hrp.CFrame = CFrame.new(targetPos) -- Pindah sekali aja
         
-        -- Karena ada BodyVelocity (bv), karakter bakal otomatis ngerem dan diem disitu
-        task.wait(0.5) -- Tunggu posisi stabil & server sync
+        -- 3. BUAT LANTAI DI SANA
+        local plat = CreatePlatform(targetPos)
         
-        -- C. PASANG
-        pcall(function() Events.placeTotem:FireServer(currentUUID) end)
-        pcall(function() Events.placeTotem:FireServer(currentUUID) end)
-        print("📍 Pasang: " .. data.Dir)
+        -- 4. TELEPORT KE ATAS LANTAI
+        hrp.CFrame = CFrame.new(targetPos)
+        hrp.Velocity = Vector3.new(0,0,0)
         
-        task.wait(0.3)
+        -- Tunggu sebentar biar kaki "nyentuh" lantai secara fisika
+        task.wait(0.2) 
+        
+        -- 5. FREEZE (ANCHOR) DI ATAS LANTAI
+        -- Ini biar server liat kita "Diam Berdiri" di atas benda padat
+        hrp.Anchored = true
+        
+        -- Tunggu Sync Server (Wajib ada delay setelah anchor)
+        task.wait(0.5)
+        
+        -- 6. PASANG
+        local success = pcall(function()
+            Events.placeTotem:FireServer(currentUUID)
+        end)
+        
+        if success then
+            print("✅ Pasang di: " .. data.Dir)
+        end
+        
+        task.wait(0.4)
+        
+        -- 7. CAIRKAN & HAPUS LANTAI
+        hrp.Anchored = false
+        if plat then plat:Destroy() end
+        task.wait(0.1)
     end
     
-    -- [[ 3. BERSIH-BERSIH (PENTING BIAR GA FREEZE SELAMANYA) ]]
-    if bv then bv:Destroy() end -- Hapus penahan
-    if hum then hum.PlatformStand = false end -- Balikin animasi
+    -- BERSIH-BERSIH SISA
+    for _, p in pairs(createdParts) do
+        if p and p.Parent then p:Destroy() end
+    end
     
-    -- Pulang
+    -- PULANG
+    hrp.Anchored = false
     hrp.CFrame = originCF
-    hrp.Velocity = Vector3.new(0,0,0)
     pcall(function() Events.unequip:FireServer(5) end)
-    
     RefreshTotemList()
-    WindUI:Notify({Title="Selesai", Content="Cek Totem Kamu!", Duration=3})
+    
+    WindUI:Notify({Title="Selesai", Content="4 Arah Selesai!", Duration=2})
 end
 -- ====================================================================
 --                  WEATHER BUY LOGIC
