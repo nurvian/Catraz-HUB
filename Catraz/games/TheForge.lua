@@ -1,15 +1,6 @@
 -------- Window / UI Library --------
 local WindUI = loadstring(game:HttpGet("https://raw.githubusercontent.com/Footagesus/WindUI/main/dist/main.lua"))()
 
-function createPopup(text)
-    return WindUI:Popup({
-        Title = "System",
-        Icon = "info",
-        Content = text,
-        Buttons = { { Title = "Oke", Icon = "check" } }
-    })
-end
-
 local Window = WindUI:CreateWindow({
     Title = "Catraz Hub | The Forge",
     Author = "by Graywolf",
@@ -30,9 +21,7 @@ local Window = WindUI:CreateWindow({
     KeySystem = {
         Title = "Key System",
         Note = "Key: 1234",
-        KeyValidator = function(EnteredKey)
-            return EnteredKey == "1234"
-        end
+        KeyValidator = function(EnteredKey) return EnteredKey == "1234" end
     }
 })
 
@@ -47,14 +36,10 @@ local MiscTab = Window:Tab({ Title = "Misc", Icon = "settings" })
 local FarmSection = MainTab:Section({ Title = "Auto Mining" })
 local FilterSection = MainTab:Section({ Title = "Rock Settings" })
 local StealthSection = MainTab:Section({ Title = "Stealth Mode" }) 
-
 local MobSection = MobTab:Section({ Title = "Auto Mob Farming" }) 
 local MobFilterSection = MobTab:Section({ Title = "Mob Settings" })
-
-local ForgeSection = ForgeTab:Section({ Title = "Legit Auto Minigame" })
-
+local ForgeSection = ForgeTab:Section({ Title = "Legit Auto Minigame", Opened = true })
 local SellSection = SellTab:Section({ Title = "Auto Sell Settings" }) 
-
 local SurvivalSection = MiscTab:Section({ Title = "Survival (Auto Heal)" })
 local SpeedSection = MiscTab:Section({ Title = "Movement / Safety" })
 local UnstuckSection = MiscTab:Section({ Title = "Emergency" }) 
@@ -83,31 +68,53 @@ local RockNames = {
     "Lucky Block", "Iron", "Gold"
 }
 
--- Generate Mob Names
 local MobNames = {"All"}
 pcall(function()
     local MobAssets = Services.ReplicatedStorage:WaitForChild("Assets"):WaitForChild("Mobs")
-    for _, mob in pairs(MobAssets:GetChildren()) do
-        table.insert(MobNames, mob.Name)
-    end
+    for _, mob in pairs(MobAssets:GetChildren()) do table.insert(MobNames, mob.Name) end
 end)
 
--- [[ RARITY DATABASE ]] --
-local RarityDatabase = {} 
+-- [[ RARITY DATABASE FIX (DEEP SCAN) ]] --
+local RarityDatabase = {
+    -- Hardcode Backup (Jaga-jaga kalau scan telat)
+    ["Stone"] = "Common", ["Pebble"] = "Common", ["Rock"] = "Common", ["Coal"] = "Common", ["Copper"] = "Common",
+    ["Iron"] = "Uncommon", ["Tin"] = "Uncommon", ["Gold"] = "Rare", ["Mithril"] = "Rare", ["Cobalt"] = "Rare",
+    ["Adurite"] = "Epic", ["Obsidian"] = "Epic", ["Adamantite"] = "Legendary", ["Runite"] = "Legendary"
+} 
+
 task.spawn(function()
-    local OreDataFolder = Services.ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Data"):WaitForChild("Ore")
-    local function ScanFolder(folder)
-        for _, item in pairs(folder:GetChildren()) do
-            if item:IsA("Folder") then ScanFolder(item)
-            elseif item:IsA("ModuleScript") then
-                local success, data = pcall(require, item)
-                if success and data.Name and data.Rarity then
-                    RarityDatabase[data.Name] = data.Rarity
+    -- Path: ReplicatedStorage > Shared > Data > Ore
+    local Shared = Services.ReplicatedStorage:WaitForChild("Shared", 5)
+    local Data = Shared and Shared:WaitForChild("Data", 5)
+    local OreFolder = Data and Data:FindFirstChild("Ore")
+    
+    if OreFolder then
+        print("[System] Scanning Ore Data Folders...")
+        
+        -- Loop Folder Kategori (Crystals, General, Island 1, dll)
+        for _, categoryFolder in pairs(OreFolder:GetChildren()) do
+            if categoryFolder:IsA("Folder") then
+                
+                -- Loop Item di dalam Kategori
+                for _, itemModule in pairs(categoryFolder:GetChildren()) do
+                    if itemModule:IsA("ModuleScript") then
+                        local success, data = pcall(require, itemModule)
+                        if success and data then
+                            -- Ambil Nama & Rarity
+                            local name = data.Name or itemModule.Name
+                            local rarity = data.Rarity or "Common"
+                            
+                            -- Masukkan ke Database
+                            RarityDatabase[name] = rarity
+                        end
+                    end
                 end
             end
         end
+        print("[System] Rarity Database Updated! Total items loaded.")
+    else
+        warn("[System] Folder 'Ore' tidak ditemukan di Shared.Data!")
     end
-    ScanFolder(OreDataFolder)
 end)
 
 local _G_Flags = {
@@ -119,23 +126,20 @@ local _G_Flags = {
     TweenSpeed = 100, 
     FarmDepth = -8,
     MaxDistance = 300,
-    -- Forge Config
     AutoPlayLegit = false,
-    
     AutoSell = false,
     SellRarities = {}, 
-    SellInterval = 10,
+    SellThreshold = 40,
     AutoHeal = false,
-    HealPercentage = 40 
+    HealPercentage = 40,
+    IsSellingAction = false 
 }
 
 ------- SUPER NOCLIP SYSTEM --------
 Services.RunService.Stepped:Connect(function()
-    if (_G_Flags.AutoFarm or _G_Flags.AutoFarmMobs) and LocalPlayer.Character then
+    if (_G_Flags.AutoFarm or _G_Flags.AutoFarmMobs or _G_Flags.IsSellingAction) and LocalPlayer.Character then
         for _, part in pairs(LocalPlayer.Character:GetDescendants()) do
-            if part:IsA("BasePart") then
-                part.CanCollide = false 
-            end
+            if part:IsA("BasePart") then part.CanCollide = false end
         end
     end
 end)
@@ -147,6 +151,7 @@ local function IsTargetValid(targetName, selectionList)
     if type(selectionList) == "table" then
         for _, selected in pairs(selectionList) do
             if selected == "All" then return true end
+            if targetName == selected then return true end
             if string.find(targetName, selected) then return true end
         end
         return false
@@ -227,7 +232,9 @@ local function TweenToPosition(targetPosition)
     if Time > 0 then
         local elapsed = 0
         while elapsed < Time do
-            if not _G_Flags.AutoFarm and not _G_Flags.AutoFarmMobs then Tween:Cancel() ResetPhysics() return false end
+            if not _G_Flags.AutoFarm and not _G_Flags.AutoFarmMobs and not _G_Flags.AutoSell and not _G_Flags.IsSellingAction then 
+                Tween:Cancel() ResetPhysics() return false 
+            end
             if not Char or not Root or (Char.Humanoid and Char.Humanoid.Health <= 0) then Tween:Cancel() ResetPhysics() return false end
             task.wait(0.1) elapsed = elapsed + 0.1
         end
@@ -282,216 +289,190 @@ local function GetActiveMob()
     return closestMob
 end
 
-------- LEGIT FORGE LOGIC (FIXED COLOR & GRIP) --------
-
-local isPumpingMelt = false
-local isHoldingPour = false
-
--- [[ MELT FIX: GRIP +30 PIXEL ]] --
+------- LEGIT FORGE LOGIC --------
+local isPumpingMelt, isHoldingPour = false, false
 local function SolveMelt()
     local MeltUI = PlayerGui:FindFirstChild("Forge") and PlayerGui.Forge:FindFirstChild("MeltMinigame")
-    
     if MeltUI and MeltUI.Visible and not isPumpingMelt then
         isPumpingMelt = true
         task.spawn(function()
             local Heater = MeltUI:WaitForChild("Heater", 1)
-            if Heater then
-                local Top = Heater:FindFirstChild("Top")
-                if Top then
-                    while MeltUI.Visible and _G_Flags.AutoPlayLegit do
-                        local absPos = Top.AbsolutePosition
-                        local absSize = Top.AbsoluteSize
-                        local centerX = absPos.X + absSize.X/2
-                        
-                        -- [[ FIX: Posisi Mouse LEBIH BAWAH LAGI (+30px) ]]
-                        local centerY = absPos.Y + absSize.Y + 30
-                        
-                        Services.VirtualInputManager:SendMouseMoveEvent(centerX, centerY, game)
-                        task.wait(0.1) 
-                        Services.VirtualInputManager:SendMouseButtonEvent(centerX, centerY, 0, true, game, 1)
-                        task.wait(0.1)
-                        
-                        -- Tarik
-                        local dragDistance = 250 
-                        local steps = 5 
-                        for i = 1, steps do
-                            if not MeltUI.Visible then break end
-                            local lerpY = centerY + (dragDistance * (i/steps))
-                            Services.VirtualInputManager:SendMouseMoveEvent(centerX, lerpY, game)
-                            task.wait(0.01)
-                        end
-                        
-                        -- Lepas
-                        Services.VirtualInputManager:SendMouseButtonEvent(centerX, centerY + dragDistance, 0, false, game, 1)
-                        task.wait(0.15)
+            if Heater and Heater:FindFirstChild("Top") then
+                local Top = Heater.Top
+                while MeltUI.Visible and _G_Flags.AutoPlayLegit do
+                    local absPos, absSize = Top.AbsolutePosition, Top.AbsoluteSize
+                    local centerX, centerY = absPos.X + absSize.X/2, absPos.Y + absSize.Y + 30
+                    Services.VirtualInputManager:SendMouseMoveEvent(centerX, centerY, game) task.wait(0.1)
+                    Services.VirtualInputManager:SendMouseButtonEvent(centerX, centerY, 0, true, game, 1) task.wait(0.1)
+                    for i = 1, 5 do if not MeltUI.Visible then break end
+                        Services.VirtualInputManager:SendMouseMoveEvent(centerX, centerY + (250 * (i/5)), game) task.wait(0.01)
                     end
+                    Services.VirtualInputManager:SendMouseButtonEvent(centerX, centerY + 250, 0, false, game, 1) task.wait(0.15)
                 end
             end
             isPumpingMelt = false
         end)
-    elseif not MeltUI or not MeltUI.Visible then
-        isPumpingMelt = false
-    end
+    elseif not MeltUI or not MeltUI.Visible then isPumpingMelt = false end
 end
 
--- [[ POUR: FLAPPY BIRD LOGIC ]] --
 local function SolvePour()
     local PourUI = PlayerGui:FindFirstChild("Forge") and PlayerGui.Forge:FindFirstChild("PourMinigame")
-    
-    if PourUI and PourUI.Visible then
-        local Frame = PourUI:FindFirstChild("Frame")
-        if Frame then
-            local Line = Frame:FindFirstChild("Line")
-            local Area = Frame:FindFirstChild("Area")
-            
-            if Line and Area then
-                local lineY = Line.AbsolutePosition.Y
-                local areaY = Area.AbsolutePosition.Y
-                local areaH = Area.AbsoluteSize.Y
-                local targetY = areaY + (areaH / 2)
-                
-                if lineY > targetY + 10 then 
-                    if not isHoldingPour then
-                        Services.VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 1)
-                        isHoldingPour = true
-                    end
-                elseif lineY < targetY - 10 then
-                    if isHoldingPour then
-                        Services.VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 1)
-                        isHoldingPour = false
-                    end
-                end
-            end
+    if PourUI and PourUI.Visible and PourUI:FindFirstChild("Frame") then
+        local Line, Area = PourUI.Frame:FindFirstChild("Line"), PourUI.Frame:FindFirstChild("Area")
+        if Line and Area then
+            local lineY, targetY = Line.AbsolutePosition.Y, Area.AbsolutePosition.Y + (Area.AbsoluteSize.Y/2)
+            if lineY > targetY + 10 then if not isHoldingPour then Services.VirtualInputManager:SendMouseButtonEvent(0,0,0,true,game,1) isHoldingPour = true end
+            elseif lineY < targetY - 10 then if isHoldingPour then Services.VirtualInputManager:SendMouseButtonEvent(0,0,0,false,game,1) isHoldingPour = false end end
         end
-    else
-        if isHoldingPour then
-            Services.VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 1)
-            isHoldingPour = false
-        end
-    end
+    elseif isHoldingPour then Services.VirtualInputManager:SendMouseButtonEvent(0,0,0,false,game,1) isHoldingPour = false end
 end
 
--- [[ HAMMER FIX: COLOR ONLY (G > 250) ]] --
 local function SolveHammer()
     local HammerUI = PlayerGui:FindFirstChild("Forge") and PlayerGui.Forge:FindFirstChild("HammerMinigame")
     if HammerUI and HammerUI.Visible then
         for _, child in pairs(HammerUI:GetChildren()) do
-            if child:IsA("TextButton") and child:FindFirstChild("Frame") then
-                local InnerFrame = child.Frame
-                local Border = InnerFrame:FindFirstChild("Border")
-                
-                if Border and Border:IsA("ImageLabel") then
-                    local color = Border.ImageColor3
-                    
-                    -- [[ FIX LOGIKA HIT: HANYA WARNA ]]
-                    -- Debugger kamu bilang: R1 G254 (Hijau Murni)
-                    -- Jadi: G > 0.9 (230+)
-                    
-                    if color.G > 0.9 then
-                        local absPos = child.AbsolutePosition
-                        local absSize = child.AbsoluteSize
-                        local centerX = absPos.X + absSize.X/2
-                        local centerY = absPos.Y + absSize.Y/2
-                        
-                        Services.VirtualInputManager:SendMouseButtonEvent(centerX, centerY, 0, true, game, 1)
-                        Services.VirtualInputManager:SendMouseButtonEvent(centerX, centerY, 0, false, game, 1)
-                        
-                        task.wait(0.2)
-                    end
+            if child:IsA("TextButton") and child:FindFirstChild("Frame") and child.Frame:FindFirstChild("Border") then
+                if child.Frame.Border.ImageColor3.G > 0.9 then
+                    local p, s = child.AbsolutePosition, child.AbsoluteSize
+                    local cx, cy = p.X + s.X/2, p.Y + s.Y/2
+                    Services.VirtualInputManager:SendMouseButtonEvent(cx, cy, 0, true, game, 1)
+                    Services.VirtualInputManager:SendMouseButtonEvent(cx, cy, 0, false, game, 1) task.wait(0.2)
                 end
             end
         end
     end
 end
-
--- [[ GLOBAL LOOP ]] --
-Services.RunService.RenderStepped:Connect(function()
-    if _G_Flags.AutoPlayLegit then
-        SolveMelt()
-        SolvePour()
-        SolveHammer()
-    end
-end)
-
+Services.RunService.RenderStepped:Connect(function() if _G_Flags.AutoPlayLegit then SolveMelt() SolvePour() SolveHammer() end end)
 
 -- [[ SELLING LOGIC ]] --
-local function GetRealInventory()
+
+local function GetTotalItems()
+    local count = 0
     if PlayerController and PlayerController.Replica and PlayerController.Replica.Data then
-        return PlayerController.Replica.Data.Inventory
+        for name, q in pairs(PlayerController.Replica.Data.Inventory) do
+            if not string.find(name, "Pickaxe") and not string.find(name, "Sword") then
+                if type(q) == "number" then count = count + q
+                elseif type(q) == "table" then count = count + (q.Value or q.Amount or 0) end
+            end
+        end
     end
-    return nil
+    return count
 end
 
 local function ProcessAutoSell()
-    local Inventory = GetRealInventory()
-    if not Inventory then warn("[AutoSell] Gagal akses Data Knit!") return end
+    local Inventory = nil
+    if PlayerController and PlayerController.Replica and PlayerController.Replica.Data then
+        Inventory = PlayerController.Replica.Data.Inventory
+    end
+    
+    if not Inventory then 
+        game:GetService("StarterGui"):SetCore("SendNotification", { Title = "Auto Sell", Text = "Inventory belum ter-load!", Duration = 3 })
+        return 
+    end
 
     local BasketToSell = {}
     local hasItem = false
+    local totalQty = 0
 
     for itemName, quantity in pairs(Inventory) do
-        if type(quantity) == "number" and quantity > 0 then
-            local itemRarity = RarityDatabase[itemName]
-            if itemRarity and IsTargetValid(itemRarity, _G_Flags.SellRarities) then
-                BasketToSell[itemName] = quantity
+        local qty = 0
+        if type(quantity) == "number" then qty = quantity
+        elseif type(quantity) == "table" then qty = quantity.Value or quantity.Amount or 0 end
+        
+        if qty > 0 and not string.find(itemName, "Pickaxe") and not string.find(itemName, "Sword") then
+            -- AMBIL RARITY YANG SUDAH DI-SCAN
+            local itemRarity = RarityDatabase[itemName] or "Common"
+            
+            if IsTargetValid(itemRarity, _G_Flags.SellRarities) then
+                BasketToSell[itemName] = qty
                 hasItem = true
+                totalQty = totalQty + 1
             end
         end
     end
 
     if hasItem then
-        local Remote = Services.ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Packages"):WaitForChild("Knit"):WaitForChild("Services"):WaitForChild("DialogueService"):WaitForChild("RF"):WaitForChild("RunCommand")
-        if Remote then
-            pcall(function()
-                Remote:InvokeServer("SellConfirm", { Basket = BasketToSell })
-                print("[AutoSell] Success! Basket:", BasketToSell)
-                game:GetService("StarterGui"):SetCore("SendNotification", { Title = "Auto Sell", Text = "Barang terjual!", Duration = 3 })
-            end)
+        local NPC = Services.Workspace:FindFirstChild("Greedy Cey", true)
+        local Prompt = NPC and NPC:FindFirstChildWhichIsA("ProximityPrompt", true)
+        
+        if NPC and Prompt then
+            local TargetPos = nil
+            local ParentObj = Prompt.Parent 
+            if ParentObj:IsA("BasePart") then TargetPos = ParentObj.Position
+            elseif ParentObj:IsA("Model") then TargetPos = ParentObj:GetPivot().Position end
+            if not TargetPos then return end
+
+            game:GetService("StarterGui"):SetCore("SendNotification", { Title = "Auto Sell", Text = "OTW Jual " .. totalQty .. " items...", Duration = 2 })
+            
+            local Char = LocalPlayer.Character
+            local Root = Char and Char:FindFirstChild("HumanoidRootPart")
+            if not Root then return end
+            
+            local OldPos = Root.Position
+            local wasFarming = _G_Flags.AutoFarm
+            local wasMobbing = _G_Flags.AutoFarmMobs
+
+            -- AKTIFKAN MODE JUAL MANUAL
+            _G_Flags.IsSellingAction = true
+            _G_Flags.AutoFarm = false
+            _G_Flags.AutoFarmMobs = false
+            
+            local arrived = TweenToPosition(TargetPos + Vector3.new(0, 0, 5))
+            
+            if arrived then
+                fireproximityprompt(Prompt)
+                task.wait(0.8) 
+                local DialogueService = Services.ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Packages"):WaitForChild("Knit"):WaitForChild("Services"):WaitForChild("DialogueService")
+                local RunCommand = DialogueService:WaitForChild("RF"):WaitForChild("RunCommand")
+                
+                if RunCommand then
+                    pcall(function()
+                        local args = { "SellConfirm", { Basket = BasketToSell } }
+                        RunCommand:InvokeServer(unpack(args))
+                        game:GetService("StarterGui"):SetCore("SendNotification", { Title = "Auto Sell", Text = "Terjual!", Duration = 3 })
+                    end)
+                end
+                task.wait(0.5)
+                TweenToPosition(OldPos) 
+            end
+            
+            -- RESET MODE JUAL & FARMING
+            _G_Flags.IsSellingAction = false
+            if wasFarming then _G_Flags.AutoFarm = true end
+            if wasMobbing then _G_Flags.AutoFarmMobs = true end
+        else
+            game:GetService("StarterGui"):SetCore("SendNotification", { Title = "Auto Sell", Text = "NPC Greedy Cey tidak ketemu!", Duration = 3 })
         end
+    else
+        game:GetService("StarterGui"):SetCore("SendNotification", { Title = "Auto Sell", Text = "Tidak ada item untuk dijual (Cek Filter).", Duration = 3 })
     end
 end
 
+-- [[ LOOPS ]] --
 task.spawn(function()
     while true do
         task.wait(1)
-        if _G_Flags.AutoSell then ProcessAutoSell() task.wait(_G_Flags.SellInterval) end
-    end
-end)
-
--- [[ AUTO HEAL LOGIC ]] --
-local lastHealTime = 0
-local healCooldown = 3 
-
-local function CheckAndHeal()
-    local Char = LocalPlayer.Character
-    if not Char then return end
-    local Hum = Char:FindFirstChild("Humanoid")
-    if not Hum or Hum.Health <= 0 then return end
-
-    local pct = (Hum.Health / Hum.MaxHealth) * 100
-    
-    if pct <= _G_Flags.HealPercentage and (tick() - lastHealTime > healCooldown) then
-        local Potion = GetTool("HealthPotion2") or GetTool("HealthPotion1")
-        if Potion then
-            print("[Auto Heal] Using " .. Potion.Name)
-            Hum:EquipTool(Potion) 
-            task.wait(0.5) 
-            ActivateTool(Potion.Name) 
-            task.wait(1.5) 
-            lastHealTime = tick()
+        if _G_Flags.AutoSell then
+            local currentItems = GetTotalItems()
+            if currentItems >= _G_Flags.SellThreshold then
+                ProcessAutoSell()
+                task.wait(3) 
+            end
         end
     end
-end
-
-task.spawn(function()
-    while true do
-        task.wait(0.5) 
-        if _G_Flags.AutoHeal then CheckAndHeal() end
-    end
 end)
 
+task.spawn(function() while true do task.wait(0.5) if _G_Flags.AutoHeal then 
+    local Char = LocalPlayer.Character
+    if Char then
+        local Hum = Char:FindFirstChild("Humanoid")
+        if Hum and Hum.Health > 0 and (Hum.Health/Hum.MaxHealth)*100 <= _G_Flags.HealPercentage then
+           local P = GetTool("HealthPotion2") or GetTool("HealthPotion1")
+           if P then Hum:EquipTool(P) task.wait(0.5) ActivateTool(P.Name) task.wait(1.5) end
+        end
+    end
+end end end)
 
-------- MAIN LOOP --------
 task.spawn(function()
     while true do
         task.wait() 
@@ -500,6 +481,7 @@ task.spawn(function()
         local Hum = Char and Char:FindFirstChild("Humanoid")
 
         if Root and Hum and Hum.Health > 0 then
+            -- AUTO MINING
             if _G_Flags.AutoFarm then
                 if _G_Flags.AutoEquip and not Char:FindFirstChild("Pickaxe") then
                     local tool = GetTool("Pickaxe")
@@ -521,6 +503,8 @@ task.spawn(function()
                         end
                     end
                 else ToggleFloat(false) task.wait(1) end
+            
+            -- AUTO MOB FARMING
             elseif _G_Flags.AutoFarmMobs then
                 if _G_Flags.AutoEquip then
                     local tool = GetTool("Sword") or GetTool("Blade") or GetTool("Weapon")
@@ -561,19 +545,33 @@ FilterSection:Dropdown({ Title = "Pilih Batu", Desc = "Multi Select Aktif", Mult
 MobSection:Toggle({ Title = "Auto Farm Mobs", Desc = "Mulai Mob Farming", Value = false, Callback = function(Value) _G_Flags.AutoFarmMobs = Value if Value then _G_Flags.AutoFarm = false end if not Value then ResetPhysics() end end })
 MobFilterSection:Dropdown({ Title = "Pilih Mob", Desc = "Multi Select Aktif", Multi = true, Default = {"All"}, Values = MobNames, Callback = function(Value) _G_Flags.SelectedMob = Value end })
 
--- [[ LEGIT FORGE UI ]]
-ForgeSection:Toggle({
-    Title = "Legit Auto Minigame",
-    Desc = "Membantu menyelesaikan minigame secara visual (Input Based)",
+ForgeSection:Toggle({ Title = "Legit Auto Minigame", Desc = "Membantu menyelesaikan minigame secara visual (Input Based)", Value = false, Callback = function(Value) _G_Flags.AutoPlayLegit = Value end })
+
+-- [[ SELLING UI ]]
+SellSection:Toggle({
+    Title = "Auto Sell Inventory",
+    Desc = "Jual otomatis saat tas penuh (mencapai batas)",
     Value = false,
-    Callback = function(Value)
-        _G_Flags.AutoPlayLegit = Value
-    end
+    Callback = function(Value) _G_Flags.AutoSell = Value end
 })
 
-SellSection:Toggle({ Title = "Auto Sell Inventory", Desc = "Jual item otomatis berdasarkan Rarity", Value = false, Callback = function(Value) _G_Flags.AutoSell = Value end })
-SellSection:Dropdown({ Title = "Pilih Rarity Jual", Desc = "Pilih tipe item yang mau DIJUAL", Multi = true, Default = {"Common", "Uncommon"}, Values = {"Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic"}, Callback = function(Value) _G_Flags.SellRarities = Value end })
-SellSection:Slider({ Title = "Interval Jual (Detik)", Step = 1, Value = { Min = 5, Max = 120, Default = 30 }, Callback = function(Value) _G_Flags.SellInterval = Value end })
+SellSection:Dropdown({
+    Title = "Pilih Rarity Jual",
+    Desc = "Pilih tipe item yang mau DIJUAL",
+    Multi = true,
+    Default = {"Common", "Uncommon"},
+    Values = {"Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic"},
+    Callback = function(Value) _G_Flags.SellRarities = Value end
+})
+
+SellSection:Slider({
+    Title = "Trigger Jumlah Item (Full)",
+    Desc = "Set sesuai kapasitas tasmu! (Misal tas 50, set 48)",
+    Step = 1,
+    Value = { Min = 10, Max = 500, Default = 45 },
+    Callback = function(Value) _G_Flags.SellThreshold = Value end
+})
+
 SellSection:Button({ Title = "JUAL SEKARANG", Callback = function() ProcessAutoSell() end })
 
 -- [[ SURVIVAL UI ]] --
