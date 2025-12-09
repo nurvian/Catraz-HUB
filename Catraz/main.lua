@@ -1,5 +1,6 @@
 local games = {
     [121864768012064] = "https://raw.githubusercontent.com/nurvian/Catraz-HUB/refs/heads/main/Catraz/games/FishIt.lua"
+    [76558904092080] = "https://https://raw.githubusercontent.com/nurvian/Catraz-HUB/refs/heads/main/Catraz/games/TheForge.lua"
 }
 
 local currentID = game.PlaceId

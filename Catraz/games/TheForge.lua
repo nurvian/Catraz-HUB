@@ -13,7 +13,7 @@ local Window = WindUI:CreateWindow({
         Title = "Open Hub", 
         CornerRadius = UDim.new(1,0), 
         StrokeThickness = 3, 
-        Enabled = true, 
+        Enabled = false, 
         Draggable = true,
         OnlyMobile = false,
         Color = ColorSequence.new(Color3.fromHex("#fc03f8"), Color3.fromHex("#db03fc"))
@@ -24,6 +24,75 @@ local Window = WindUI:CreateWindow({
         KeyValidator = function(EnteredKey) return EnteredKey == "1234" end
     }
 })
+
+-- [[ CUSTOM TOGGLE UI SYSTEM ]] --
+task.spawn(function()
+    -- 1. Siapkan Variable
+    local CoreGui = game:GetService("CoreGui")
+    local TweenService = game:GetService("TweenService")
+    
+    -- Hapus UI lama jika ada (biar gak numpuk pas execute ulang)
+    if CoreGui:FindFirstChild("GraywolfCustomUI") then
+        CoreGui.GraywolfCustomUI:Destroy()
+    end
+
+    -- 2. Buat ScreenGui Utama
+    local ScreenGui = Instance.new("ScreenGui")
+    ScreenGui.Name = "GraywolfCustomUI"
+    ScreenGui.Parent = CoreGui
+    ScreenGui.ResetOnSpawn = false
+    ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+    -- 3. Buat Tombol (ImageButton)
+    local ToggleBtn = Instance.new("ImageButton")
+    ToggleBtn.Name = "ToggleBtn"
+    ToggleBtn.Parent = ScreenGui
+    ToggleBtn.BackgroundColor3 = Color3.fromRGB(20, 20, 20) -- Warna Background Gelap
+    ToggleBtn.Position = UDim2.new(0.1, 0, 0.1, 0) -- Posisi Awal (Kiri Atas)
+    ToggleBtn.Size = UDim2.new(0, 50, 0, 50) -- Ukuran 50x50 Pixel
+    ToggleBtn.Image = "rbxassetid://124162045221605" -- [[ GANTI ID GAMBAR DISINI ]]
+    ToggleBtn.Active = true
+    ToggleBtn.Draggable = true -- Fitur bawaan biar bisa digeser user
+    ToggleBtn.BorderSizePixel = 0
+
+    -- 4. Hiasan (Biar Bulat & Ada Garis Pinggir)
+    local UICorner = Instance.new("UICorner")
+    UICorner.CornerRadius = UDim.new(1, 0) -- 1 = Bulat Sempurna
+    UICorner.Parent = ToggleBtn
+
+    local UIStroke = Instance.new("UIStroke")
+    UIStroke.Color = Color3.fromHex("#fc03f8") -- Warna Pink (Sesuai tema scriptmu)
+    UIStroke.Thickness = 2
+    UIStroke.Parent = ToggleBtn
+    
+    -- Efek Glow/Shadow (Optional)
+    local Shadow = Instance.new("ImageLabel")
+    Shadow.Name = "Shadow"
+    Shadow.Parent = ToggleBtn
+    Shadow.AnchorPoint = Vector2.new(0.5, 0.5)
+    Shadow.Position = UDim2.new(0.5, 0, 0.5, 0)
+    Shadow.Size = UDim2.new(1, 15, 1, 15)
+    Shadow.BackgroundTransparency = 1
+    Shadow.Image = "rbxassetid://6015897843"
+    Shadow.ImageColor3 = Color3.fromHex("#fc03f8")
+    Shadow.ImageTransparency = 0.6
+    Shadow.ZIndex = 0
+
+    -- 5. Fungsi Klik (Logika Utama)
+    local isOpen = true -- Status awal Window
+    
+    ToggleBtn.MouseButton1Click:Connect(function()
+        -- Panggil fungsi Toggle bawaan WindUI
+        Window:Toggle()
+        
+        -- Animasi Tombol saat diklik (Efek membal)
+        ToggleBtn.Size = UDim2.new(0, 40, 0, 40)
+        TweenService:Create(ToggleBtn, TweenInfo.new(0.2, Enum.EasingStyle.Back), {Size = UDim2.new(0, 50, 0, 50)}):Play()
+    end)
+    
+    -- (Optional) Sembunyikan tombol saat Key System muncul
+    -- Karena WindUI KeySystem nge-block layar, tombol ini aman tetap ada.
+end)
 
 ------- Tabs --------
 local MainTab = Window:Tab({ Title = "Main", Icon = "home" })
