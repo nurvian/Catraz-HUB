@@ -2,7 +2,6 @@
 local WindUI = loadstring(game:HttpGet("https://raw.githubusercontent.com/Footagesus/WindUI/main/dist/main.lua"))()
 
 -------- [[ CORE VARIABLES & SERVICES ]] --------
--- Kita load variable dulu sebelum UI biar Dropdown ada isinya
 local Services = {
     Players = game:GetService("Players"),
     ReplicatedStorage = game:GetService("ReplicatedStorage"),
@@ -20,24 +19,80 @@ local LocalPlayer = Services.Players.LocalPlayer
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 local RocksFolder = Services.Workspace:WaitForChild("Rocks")
 
--- [[ SETUP DATA ]] --
-local RockNames = {
-    "All", "Pebble", "Rock", "Boulder", "Basalt Rock", 
-    "Basalt Core", "Basalt Vein", "Volcanic Rock", 
-    "Lucky Block", "Iron", "Gold"
-}
+-- [[ ADVANCED AUTO GENERATOR (FIXED SOURCE) ]] --
+local RockNames = {"All"} -- List Nama Batu (Targeting)
+local OreNames = {"All"}  -- List Nama Hasil/Ore (Filtering)
+local RarityDatabase = {} 
+local TempBlacklist = {} -- List batu yang harus dihindari sementara (Anti-Stuck)
 
+local function RunAutoGenerator()
+    print("[System] Starting Generator...")
+    local TempRocks = {}
+    local TempOres = {}
+    
+    -- 1. SCAN ORE (Isi/Drop) dari Data Game
+    local Shared = Services.ReplicatedStorage:WaitForChild("Shared", 5)
+    local Data = Shared and Shared:WaitForChild("Data", 5)
+    local OreFolder = Data and Data:FindFirstChild("Ore")
+    
+    if OreFolder then
+        for _, categoryFolder in pairs(OreFolder:GetChildren()) do
+            if categoryFolder:IsA("Folder") then
+                for _, itemModule in pairs(categoryFolder:GetChildren()) do
+                    if itemModule:IsA("ModuleScript") then
+                        TempOres[itemModule.Name] = true
+                        local success, data = pcall(require, itemModule)
+                        if success and data then
+                            local realName = data.Name or itemModule.Name
+                            TempOres[realName] = true
+                            RarityDatabase[realName] = data.Rarity or "Common"
+                        end
+                    end
+                end
+            end
+        end
+    end
+    
+    -- 2. SCAN ROCK (Nama Model Batu) dari Assets
+    local Assets = Services.ReplicatedStorage:WaitForChild("Assets", 5)
+    local RocksAssets = Assets and Assets:FindFirstChild("Rocks")
+    
+    if RocksAssets then
+        for _, rock in pairs(RocksAssets:GetChildren()) do
+            TempRocks[rock.Name] = true
+        end
+    end
+    
+    for name, _ in pairs(TempRocks) do table.insert(RockNames, name) end
+    for name, _ in pairs(TempOres) do table.insert(OreNames, name) end
+    
+    table.sort(RockNames)
+    table.sort(OreNames)
+end
+
+RunAutoGenerator()
+
+-- [[ MOB NAMES GENERATOR ]] --
 local MobNames = {"All"}
 pcall(function()
     local MobAssets = Services.ReplicatedStorage:WaitForChild("Assets"):WaitForChild("Mobs")
     for _, mob in pairs(MobAssets:GetChildren()) do table.insert(MobNames, mob.Name) end
+    table.sort(MobNames)
 end)
 
 -- [[ FLAGS (SETTINGS) ]] --
 local _G_Flags = {
     AutoFarm = false,
     AutoEquip = true,
-    SelectedRock = {"All"}, 
+    
+    -- Targeting (ROCKS)
+    PriorityRocks = {"Iron", "Gold", "Lucky Block"}, 
+    BackupRocks = {"All"}, 
+    
+    -- Filtering (ORES)
+    KeepOres = {"Iron", "Gold", "Mithril", "Adurite", "Adamantite", "Runite", "Lucky Block", "Cobalt"}, 
+    OreSkipEnabled = true,
+    
     AutoFarmMobs = false,
     SelectedMob = {"All"},
     TweenSpeed = 100, 
@@ -49,35 +104,8 @@ local _G_Flags = {
     SellThreshold = 40,
     AutoHeal = false,
     HealPercentage = 40,
-    IsSellingAction = false 
+    IsSellingAction = false
 }
-
--- [[ RARITY DATABASE FIX ]] --
-local RarityDatabase = {
-    ["Stone"] = "Common", ["Pebble"] = "Common", ["Rock"] = "Common", ["Coal"] = "Common", ["Copper"] = "Common",
-    ["Iron"] = "Uncommon", ["Tin"] = "Uncommon", ["Gold"] = "Rare", ["Mithril"] = "Rare", ["Cobalt"] = "Rare",
-    ["Adurite"] = "Epic", ["Obsidian"] = "Epic", ["Adamantite"] = "Legendary", ["Runite"] = "Legendary"
-} 
-
-task.spawn(function()
-    local Shared = Services.ReplicatedStorage:WaitForChild("Shared", 5)
-    local Data = Shared and Shared:WaitForChild("Data", 5)
-    local OreFolder = Data and Data:FindFirstChild("Ore")
-    if OreFolder then
-        for _, categoryFolder in pairs(OreFolder:GetChildren()) do
-            if categoryFolder:IsA("Folder") then
-                for _, itemModule in pairs(categoryFolder:GetChildren()) do
-                    if itemModule:IsA("ModuleScript") then
-                        local success, data = pcall(require, itemModule)
-                        if success and data then
-                            RarityDatabase[data.Name or itemModule.Name] = data.Rarity or "Common"
-                        end
-                    end
-                end
-            end
-        end
-    end
-end)
 
 -------- [[ CATRAZ THEME SETUP ]] --------
 WindUI:AddTheme({
@@ -104,14 +132,6 @@ WindUI:AddTheme({
     ElementTitle = Color3.fromHex("#fcfcfc"),
     ElementDesc = Color3.fromHex("#b36b6b"),
     ElementIcon = Color3.fromHex("#ffcccc"),
-    PopupBackground = Color3.fromHex("#1a0b0b"),
-    PopupTitle = Color3.fromHex("#fcfcfc"),
-    PopupContent = Color3.fromHex("#ffe5e5"),
-    PopupIcon = Color3.fromHex("#ff5e5e"),
-    DialogBackground = Color3.fromHex("#1a0b0b"),
-    DialogTitle = Color3.fromHex("#fcfcfc"),
-    DialogContent = Color3.fromHex("#ffe5e5"),
-    DialogIcon = Color3.fromHex("#ff5e5e"),
     Toggle = Color3.fromHex("#fcfcfc"), 
     ToggleBar = Color3.fromHex("#3d1a1a"),
     Checkbox = Color3.fromHex("#fcfcfc"),
@@ -119,11 +139,6 @@ WindUI:AddTheme({
     Slider = Color3.fromHex("#fcfcfc"),
     SliderThumb = Color3.fromHex("#ff5e5e"), 
 })
-
-WindUI:Gradient({
-    ["0"]   = { Color = Color3.fromHex("#2e1212"), Transparency = 0.8 }, 
-    ["100"] = { Color = Color3.fromHex("#0f0505"), Transparency = 0.8 }, 
-}, { Rotation = 45 })
 
 WindUI:SetTheme("Native Red")
 
@@ -140,30 +155,31 @@ local Window = WindUI:CreateWindow({
     KeySystem = {                                                   
         Note = "Catraz Hub Key System",              
         API = {                                                     
-            { -- PlatoBoost
+            { 
+                Title = "Platoboost",
+                Desc = "Click to copy.", 
+                Icon = "rbxassetid://124162045221605", 
                 Type = "platoboost",                                
-                ServiceId = 15690, -- service id
-                Secret = "6b58c208-1a3e-4085-81f8-44a0ed290b88", -- platoboost secret
+                ServiceId = 15690, 
+                Secret = "6b58c208-1a3e-4085-81f8-44a0ed290b88", 
             },                                                      
         },                                                          
     },                                                              
     User = {
         Enabled = true,
         Anonymous = false,
-        Callback = function()
-            print("clicked")
-        end,
+        Callback = function() end,
     },
 })
 
 WindUI:Notify({
     Title = "Catraz Hub Loaded",
-    Content = "Success load Catraz Hub, detected game The Forge",
+    Content = "Success load Catraz Hub v3.7 (Fix)",
     Duration = 5,
-    Icon = "badge-check", -- Ikon centang
+    Icon = "badge-check", 
 })
 
--- [[ CUSTOM TOGGLE UI SYSTEM V3 ]] --
+-- [[ CUSTOM TOGGLE UI SYSTEM ]] --
 task.spawn(function()
     local CoreGui = game:GetService("CoreGui")
     local TweenService = game:GetService("TweenService")
@@ -199,7 +215,7 @@ task.spawn(function()
     local ImageCorner = Instance.new("UICorner")
     ImageCorner.CornerRadius = UDim.new(1, 0)
     ImageCorner.Parent = IconImage
-
+    
     local UIStroke = Instance.new("UIStroke")
     UIStroke.Parent = ToggleBtn
     UIStroke.Color = Color3.fromHex("#ff5e5e")
@@ -208,13 +224,11 @@ task.spawn(function()
 
     ToggleBtn.MouseButton1Click:Connect(function()
         Window:Toggle()
-        ToggleBtn.Size = UDim2.new(0, 50, 0, 50)
-        TweenService:Create(ToggleBtn, TweenInfo.new(0.15, Enum.EasingStyle.Back), {Size = UDim2.new(0, 60, 0, 60)}):Play()
     end)
 end)
 
 ------- [[ LOGIC FUNCTIONS ]] -------
--- Didefinisikan di sini agar bisa dipanggil oleh UI
+
 local function IsTargetValid(targetName, selectionList)
     if selectionList == "All" then return true end
     if type(selectionList) == "table" then
@@ -311,28 +325,48 @@ local function TweenToPosition(targetPosition)
     return true 
 end
 
+-- [[ PRIORITY MINING SYSTEM (WITH BLACKLIST) ]] --
 local function GetActiveRock()
-    local closestRock, shortestDistance = nil, math.huge
     local myRoot = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
     if not myRoot then return nil end
-    for _, obj in pairs(RocksFolder:GetDescendants()) do
-        if obj.Name == "Hitbox" and obj.Parent then
-            local rockModel, orePos = obj.Parent, obj:FindFirstChild("OrePosition")
-            if orePos and rockModel:IsA("Model") then
-                if IsTargetValid(rockModel.Name, _G_Flags.SelectedRock) then
-                    local targetPos = (orePos:IsA("BasePart") and orePos.Position) or (orePos:IsA("Attachment") and orePos.WorldPosition)
-                    if targetPos then
-                        local dist = (myRoot.Position - targetPos).Magnitude
-                        if dist < _G_Flags.MaxDistance and dist < shortestDistance then
-                            closestRock = { Model = rockModel, Position = targetPos }
-                            shortestDistance = dist
+    
+    -- Clear Blacklist (Hapus yang sudah > 5 detik)
+    for model, timeAdded in pairs(TempBlacklist) do
+        if tick() - timeAdded > 5 then TempBlacklist[model] = nil end
+    end
+    
+    local function FindRockInList(targetList)
+        local bestRock, bestDist = nil, math.huge
+        
+        for _, obj in pairs(RocksFolder:GetDescendants()) do
+            if obj.Name == "Hitbox" and obj.Parent then
+                local rockModel, orePos = obj.Parent, obj:FindFirstChild("OrePosition")
+                
+                -- CEK BLACKLIST
+                if not TempBlacklist[rockModel] then 
+                    if orePos and rockModel:IsA("Model") then
+                        if IsTargetValid(rockModel.Name, targetList) then
+                            local targetPos = (orePos:IsA("BasePart") and orePos.Position) or (orePos:IsA("Attachment") and orePos.WorldPosition)
+                            if targetPos then
+                                local dist = (myRoot.Position - targetPos).Magnitude
+                                if dist < _G_Flags.MaxDistance and dist < bestDist then
+                                    bestRock = { Model = rockModel, Position = targetPos }
+                                    bestDist = dist
+                                end
+                            end
                         end
                     end
                 end
             end
         end
+        return bestRock
     end
-    return closestRock
+
+    local PriorityTarget = FindRockInList(_G_Flags.PriorityRocks)
+    if PriorityTarget then return PriorityTarget end
+    
+    local BackupTarget = FindRockInList(_G_Flags.BackupRocks)
+    return BackupTarget
 end
 
 local function GetActiveMob()
@@ -356,6 +390,40 @@ local function GetActiveMob()
     return closestMob
 end
 
+-- [[ ORE REVEAL DETECTION (FIXED ATTRIBUTES) ]] --
+local function CheckRevealedOre(RockModel)
+    if not RockModel then return nil end
+    
+    local OreModel = RockModel:FindFirstChild("Ore")
+    if OreModel then
+        -- FIX UTAMA: Baca Attribute "Ore" (Contoh: "Gold")
+        local oreType = OreModel:GetAttribute("Ore")
+        if oreType then
+            return oreType -- Mengembalikan "Gold", "Iron", dll
+        end
+    end
+    return nil
+end
+
+-- [[ IS ROCK CLAIMED CHECKER ]] --
+local function IsRockClaimed(RockModel)
+    if not RockModel then return false end
+    
+    -- Cek BillboardGui bernama "infoFrame"
+    local infoFrame = RockModel:FindFirstChild("infoFrame")
+    if infoFrame then
+        for _, gui in pairs(infoFrame:GetDescendants()) do
+            if gui:IsA("TextLabel") or gui:IsA("TextButton") then
+                local text = string.lower(gui.Text)
+                if string.find(text, "someone else") or string.find(text, "already mining") then
+                    return true
+                end
+            end
+        end
+    end
+    return false
+end
+
 -- [[ AUTO SELL FUNCTIONS ]]
 local function GetTotalItems()
     local count = 0
@@ -375,10 +443,7 @@ local function ProcessAutoSell()
     if PlayerController and PlayerController.Replica and PlayerController.Replica.Data then
         Inventory = PlayerController.Replica.Data.Inventory
     end
-    if not Inventory then 
-        game:GetService("StarterGui"):SetCore("SendNotification", { Title = "Auto Sell", Text = "Inventory belum ter-load!", Duration = 3 })
-        return 
-    end
+    if not Inventory then return end
 
     local BasketToSell = {}
     local hasItem = false
@@ -410,7 +475,7 @@ local function ProcessAutoSell()
             elseif ParentObj:IsA("Model") then TargetPos = ParentObj:GetPivot().Position end
             if not TargetPos then return end
 
-            game:GetService("StarterGui"):SetCore("SendNotification", { Title = "Auto Sell", Text = "OTW Jual " .. totalQty .. " items...", Duration = 2 })
+            game:GetService("StarterGui"):SetCore("SendNotification", { Title = "Auto Sell", Text = "Selling " .. totalQty .. " items...", Duration = 2 })
             
             local Char = LocalPlayer.Character
             local Root = Char and Char:FindFirstChild("HumanoidRootPart")
@@ -436,7 +501,7 @@ local function ProcessAutoSell()
                     pcall(function()
                         local args = { "SellConfirm", { Basket = BasketToSell } }
                         RunCommand:InvokeServer(unpack(args))
-                        game:GetService("StarterGui"):SetCore("SendNotification", { Title = "Auto Sell", Text = "Terjual!", Duration = 3 })
+                        game:GetService("StarterGui"):SetCore("SendNotification", { Title = "Auto Sell", Text = "Sold Successfully!", Duration = 3 })
                     end)
                 end
                 task.wait(0.5)
@@ -446,24 +511,20 @@ local function ProcessAutoSell()
             _G_Flags.IsSellingAction = false
             if wasFarming then _G_Flags.AutoFarm = true end
             if wasMobbing then _G_Flags.AutoFarmMobs = true end
-        else
-            game:GetService("StarterGui"):SetCore("SendNotification", { Title = "Auto Sell", Text = "NPC Greedy Cey tidak ketemu!", Duration = 3 })
         end
-    else
-        game:GetService("StarterGui"):SetCore("SendNotification", { Title = "Auto Sell", Text = "Tidak ada item untuk dijual (Cek Filter).", Duration = 3 })
     end
 end
 
 ------- [[ UI CONSTRUCTION ]] -------
-
 -- 1. Tab Auto
 local AutoTab = Window:Tab({ Title = "Auto", Icon = "workflow" })
 
 -- Section 1.1: Mining
-local MiningSection = AutoTab:Section({ Title = "Automation Mining Ore" })
+local MiningSection = AutoTab:Section({ Title = "Mining Automation" })
+
 MiningSection:Toggle({ 
-    Title = "Toggle Auto Farm", 
-    Desc = "Otomatis menambang batu di sekitar", 
+    Title = "Auto Farm Rocks", 
+    Desc = "Start mining nearby rocks", 
     Value = false, 
     Callback = function(Value) 
         _G_Flags.AutoFarm = Value 
@@ -471,27 +532,54 @@ MiningSection:Toggle({
         if not Value then ResetPhysics() end 
     end 
 })
+
 MiningSection:Dropdown({ 
-    Title = "Pilih Batu", 
-    Desc = "Target batu yang ingin ditambang", 
+    Title = "Priority Rocks", 
+    Desc = "Target MODEL name (Container)", 
+    Multi = true, 
+    Default = {"Iron", "Gold", "Lucky Block"}, 
+    Values = RockNames, 
+    Callback = function(Value) _G_Flags.PriorityRocks = Value end 
+})
+
+MiningSection:Dropdown({ 
+    Title = "Backup Rocks", 
+    Desc = "Target if Priority not found", 
     Multi = true, 
     Default = {"All"}, 
     Values = RockNames, 
-    Callback = function(Value) _G_Flags.SelectedRock = Value end 
+    Callback = function(Value) _G_Flags.BackupRocks = Value end 
 })
+
+MiningSection:Toggle({ 
+    Title = "Smart Ore Skip", 
+    Desc = "Skip if revealed ORE is bad", 
+    Value = true, 
+    Callback = function(Value) _G_Flags.OreSkipEnabled = Value end 
+})
+
+MiningSection:Dropdown({ 
+    Title = "Keep Ores", 
+    Desc = "Select Ore/Drop name to KEEP", 
+    Multi = true, 
+    Default = {"Iron", "Gold", "Mithril", "Adurite", "Adamantite", "Runite", "Lucky Block", "Cobalt"}, 
+    Values = OreNames, 
+    Callback = function(Value) _G_Flags.KeepOres = Value end 
+})
+
 MiningSection:Slider({ 
     Title = "Stealth Depth", 
-    Desc = "Posisi player (Minus = Bawah Tanah)", 
+    Desc = "Player Y Offset (Negative = Underground)", 
     Step = 1, 
     Value = { Min = -15, Max = 5, Default = -8 }, 
     Callback = function(Value) _G_Flags.FarmDepth = Value end 
 })
 
 -- Section 1.2: Mobs
-local MobSection = AutoTab:Section({ Title = "Automation Mobs Farming" })
+local MobSection = AutoTab:Section({ Title = "Mob Farming" })
 MobSection:Toggle({ 
-    Title = "Toggle Auto Farm Mobs", 
-    Desc = "Otomatis menyerang monster", 
+    Title = "Auto Farm Mobs", 
+    Desc = "Start attacking mobs", 
     Value = false, 
     Callback = function(Value) 
         _G_Flags.AutoFarmMobs = Value 
@@ -500,8 +588,8 @@ MobSection:Toggle({
     end 
 })
 MobSection:Dropdown({ 
-    Title = "Pilih Mob", 
-    Desc = "Target monster yang ingin dilawan", 
+    Title = "Select Mobs", 
+    Desc = "Target mobs to attack", 
     Multi = true, 
     Default = {"All"}, 
     Values = MobNames, 
@@ -509,77 +597,77 @@ MobSection:Dropdown({
 })
 
 -- Section 1.3: Sell
-local SellSection = AutoTab:Section({ Title = "Automation Sell" })
+local SellSection = AutoTab:Section({ Title = "Auto Sell" })
 SellSection:Toggle({
-    Title = "Toggle Auto Sell Inventory",
-    Desc = "Jual item saat tas penuh",
+    Title = "Auto Sell Inventory",
+    Desc = "Sell when capacity reached",
     Value = false,
     Callback = function(Value) _G_Flags.AutoSell = Value end
 })
 SellSection:Dropdown({
-    Title = "Pilih Rarity",
-    Desc = "Kualitas item yang akan dijual",
+    Title = "Sell Rarity",
+    Desc = "Select rarities to sell",
     Multi = true, 
     Default = {"Common", "Uncommon"},
     Values = {"Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic"},
     Callback = function(Value) _G_Flags.SellRarities = Value end
 })
 SellSection:Slider({
-    Title = "Trigger Jumlah Item",
-    Desc = "Jual jika item mencapai jumlah ini",
+    Title = "Capacity Trigger",
+    Desc = "Trigger sell at X items",
     Step = 1,
     Value = { Min = 10, Max = 500, Default = 45 },
     Callback = function(Value) _G_Flags.SellThreshold = Value end
 })
 SellSection:Button({ 
-    Title = "Jual Sekarang", 
+    Title = "Sell Now", 
     Callback = function() ProcessAutoSell() end 
 })
 
 -- Section 1.4: Forge Minigame
-local ForgeSection = AutoTab:Section({ Title = "Automation Forge Minigame" })
+local ForgeSection = AutoTab:Section({ Title = "Forge Minigame" })
 ForgeSection:Toggle({ 
     Title = "Legit Auto Minigame", 
-    Desc = "Bantuan visual otomatis untuk minigame forging", 
+    Desc = "Visual helper for Melt/Pour/Hammer", 
     Value = false, 
     Callback = function(Value) _G_Flags.AutoPlayLegit = Value end 
 })
 
 -- Section 1.5: Potion
-local PotionSection = AutoTab:Section({ Title = "Automation Potion" })
+local PotionSection = AutoTab:Section({ Title = "Auto Potion" })
 PotionSection:Toggle({ 
-    Title = "Autoheal Potion", 
-    Desc = "Otomatis minum potion", 
+    Title = "Auto Heal", 
+    Desc = "Use potion when low HP", 
     Value = false, 
     Callback = function(Value) _G_Flags.AutoHeal = Value end 
 })
 PotionSection:Slider({ 
-    Title = "Trigger HP%", 
-    Desc = "Batas HP untuk menggunakan potion", 
+    Title = "HP Trigger %", 
+    Desc = "HP threshold to use potion", 
     Step = 5, 
     Value = { Min = 10, Max = 90, Default = 40 }, 
     Callback = function(Value) _G_Flags.HealPercentage = Value end 
 })
 
 -- Section 1.6: Safety Movement
-local SafetySection = AutoTab:Section({ Title = "Safety Movement" })
+local SafetySection = AutoTab:Section({ Title = "Movement Settings" })
 SafetySection:Slider({ 
     Title = "Max Distance", 
-    Desc = "Jarak maksimal deteksi target",
+    Desc = "Max scanning distance",
     Step = 1, 
     Value = { Min = 50, Max = 2000, Default = 300 }, 
     Callback = function(Value) _G_Flags.MaxDistance = Value end 
 })
 SafetySection:Slider({ 
-    Title = "Kecepatan Tween", 
-    Desc = "Kecepatan terbang ke target",
+    Title = "Tween Speed", 
+    Desc = "Flying speed",
     Step = 1, 
     Value = { Min = 50, Max = 500, Default = 100 }, 
     Callback = function(Value) _G_Flags.TweenSpeed = Value end 
 })
 SafetySection:Button({ 
-    Title = "Emergency Stuck", 
-    Desc = "Reset karakter jika nyangkut",
+    Title = "Unstuck / Reset", 
+    Desc = "Click if character gets stuck",
     Callback = function() ResetPhysics() end 
 })
 
@@ -587,7 +675,7 @@ SafetySection:Button({
 local MiscTab = Window:Tab({ Title = "Misc", Icon = "backpack" })
 MiscTab:Keybind({ 
     Title = "Hide Menu", 
-    Desc = "Tombol sembunyi UI (Default: Right Ctrl)", 
+    Desc = "Toggle UI (Default: Right Ctrl)", 
     Default = Enum.KeyCode.RightControl, 
     Callback = function() Window:Toggle() end 
 })
@@ -604,7 +692,6 @@ local TeleportTab = Window:Tab({ Title = "Teleport", Icon = "map" })
 
 -- 6. Tab Settings (Empty)
 local SettingsTab = Window:Tab({ Title = "Settings", Icon = "settings" })
-
 
 ------- [[ LOGIC LOOPS (WORKERS) ]] -------
 
@@ -703,7 +790,7 @@ local function SolveHammer()
 end
 Services.RunService.RenderStepped:Connect(function() if _G_Flags.AutoPlayLegit then SolveMelt() SolvePour() SolveHammer() end end)
 
--- LOOP 4: Main Farming Loop
+-- LOOP 4: Main Farming Loop (FINAL FIX)
 task.spawn(function()
     while true do
         task.wait() 
@@ -718,16 +805,50 @@ task.spawn(function()
                     local tool = GetTool("Pickaxe")
                     if tool then Hum:EquipTool(tool) end
                 end
+                
                 local Target = GetActiveRock()
+                
                 if Target then
                     local stealthPos = Target.Position + Vector3.new(0, _G_Flags.FarmDepth, 0)
                     local arrived = TweenToPosition(stealthPos)
                     if arrived then
                         ToggleFloat(true) 
                         local lastHit = 0
+                        
                         while _G_Flags.AutoFarm and Target.Model.Parent ~= nil and Target.Model:FindFirstChild("Hitbox") do
                             if not Char or not Root or Hum.Health <= 0 then break end
                             if (Root.Position - Target.Position).Magnitude > 30 then break end 
+                            
+                            -- [[ SKIP ORE LOGIC (FIXED) ]] --
+                            if _G_Flags.OreSkipEnabled then
+                                -- 1. Ambil HP dari Attributes
+                                local currentHP = Target.Model:GetAttribute("Health") or 100
+                                local maxHP = Target.Model:GetAttribute("MaxHealth") or 100
+                                local hpPercent = currentHP / maxHP
+                                
+                                -- 2. Cek jika HP < 55% (Ore Reveal Phase)
+                                if hpPercent <= 0.55 then
+                                    local revealedOreName = CheckRevealedOre(Target.Model)
+                                    if revealedOreName then
+                                        -- Cek apakah nama ore ada di list "Keep Ores"
+                                        if not IsTargetValid(revealedOreName, _G_Flags.KeepOres) then
+                                            print("[Catraz] Skipping Bad Ore: " .. revealedOreName)
+                                            -- Masukkan ke blacklist agar pindah batu
+                                            TempBlacklist[Target.Model] = tick()
+                                            break 
+                                        end
+                                    end
+                                end
+                            end
+
+                            -- [[ ANTI-CLAIM LOGIC (FIXED) ]] --
+                            if IsRockClaimed(Target.Model) then
+                                print("[Catraz] Skipping Claimed Rock")
+                                TempBlacklist[Target.Model] = tick()
+                                break 
+                            end
+                            ----------------------------
+
                             Root.CFrame = CFrame.lookAt(stealthPos, Target.Position)
                             if tick() - lastHit > 0.25 then ActivateTool("Pickaxe") lastHit = tick() end
                             task.wait()
