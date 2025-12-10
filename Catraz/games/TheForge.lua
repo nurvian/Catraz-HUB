@@ -137,11 +137,16 @@ local Window = WindUI:CreateWindow({
     HideSearchBar = true,
     BackgroundImageTransparency = 1,
     OpenButton = { Title = "Open Hub", Enabled = false },
-    KeySystem = {
-        Title = "Key System",
-        Note = "Key: 1234",
-        KeyValidator = function(EnteredKey) return EnteredKey == "1234" end
-    },
+    KeySystem = {                                                   
+        Note = "Catraz Hub Key System",              
+        API = {                                                     
+            { -- PlatoBoost
+                Type = "platoboost",                                
+                ServiceId = 15690, -- service id
+                Secret = "6b58c208-1a3e-4085-81f8-44a0ed290b88", -- platoboost secret
+            },                                                      
+        },                                                          
+    },                                                              
     User = {
         Enabled = true,
         Anonymous = false,
@@ -155,7 +160,7 @@ WindUI:Notify({
     Title = "Catraz Hub Loaded",
     Content = "Success load Catraz Hub, detected game The Forge",
     Duration = 5,
-    Icon = "check-circle", -- Ikon centang
+    Icon = "badge-check", -- Ikon centang
 })
 
 -- [[ CUSTOM TOGGLE UI SYSTEM V3 ]] --
