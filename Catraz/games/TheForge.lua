@@ -104,7 +104,8 @@ local _G_Flags = {
     SellThreshold = 40,
     AutoHeal = false,
     HealPercentage = 40,
-    IsSellingAction = false
+    IsSellingAction = false,
+    AntiLava = false,
 }
 
 -------- [[ CATRAZ THEME SETUP ]] --------
@@ -257,6 +258,36 @@ local function ResetPhysics()
         end
     end
     if Hum then Hum.PlatformStand = false end
+end
+
+-- [[ ANTI LAVA LOGIC (FIXED NAME) ]] --
+local function ToggleAntiLava(state)
+    _G_Flags.AntiLava = state
+    
+    if state then
+        print("[Catraz] Anti-Lava Enabled for: lavadamagezone")
+        
+        -- 1. Hapus yang sudah ada sekarang
+        for _, obj in pairs(Services.Workspace:GetDescendants()) do
+            if obj.Name == "lavadamagezone" then
+                obj:Destroy()
+            end
+        end
+        
+        -- 2. Pantau jika map reload atau kita teleport ke Volcano
+        local LavaConnection
+        LavaConnection = Services.Workspace.DescendantAdded:Connect(function(obj)
+            if not _G_Flags.AntiLava then 
+                LavaConnection:Disconnect() -- Stop memantau kalau dimatikan
+                return 
+            end
+            
+            if obj.Name == "lavadamagezone" then
+                task.wait() -- Tunggu sebentar biar ke-load property-nya
+                obj:Destroy()
+            end
+        end)
+    end
 end
 
 local function ToggleFloat(state)
@@ -670,6 +701,14 @@ SafetySection:Button({
     Desc = "Click if character gets stuck",
     Callback = function() ResetPhysics() end 
 })
+SafetySection:Toggle({ 
+    Title = "Anti Lava (Volcano)", 
+    Desc = "Remove 'lavadamagezone' parts", 
+    Value = false, 
+    Callback = function(Value) 
+        ToggleAntiLava(Value)
+    end 
+})
 
 -- 2. Tab Misc
 local MiscTab = Window:Tab({ Title = "Misc", Icon = "backpack" })
@@ -790,11 +829,26 @@ local function SolveHammer()
 end
 Services.RunService.RenderStepped:Connect(function() if _G_Flags.AutoPlayLegit then SolveMelt() SolvePour() SolveHammer() end end)
 
+-- [[ AUTO RESUME LISTENER ]] --
+local function OnCharacterAdded(newChar)
+    task.wait(1) -- Tunggu loading character
+    if _G_Flags.AutoFarm or _G_Flags.AutoFarmMobs then
+        -- Opsional: Teleport balik ke spot terakhir mining jika kamu simpan posisinya
+        print("[Catraz] Character Respawned, resuming farm...")
+    end
+end
+
+Services.Players.LocalPlayer.CharacterAdded:Connect(OnCharacterAdded)
+
 -- LOOP 4: Main Farming Loop (FINAL FIX)
 task.spawn(function()
     while true do
         task.wait() 
         local Char = LocalPlayer.Character
+        if not Char or not Char:FindFirstChild("HumanoidRootPart") or not Char:FindFirstChild("Humanoid") then
+            task.wait(1) -- Tunggu spawn
+            continue -- Skip loop ini dan ulang cek
+        end
         local Root = Char and Char:FindFirstChild("HumanoidRootPart")
         local Hum = Char and Char:FindFirstChild("Humanoid")
 
