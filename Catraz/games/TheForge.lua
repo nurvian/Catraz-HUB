@@ -24,6 +24,41 @@ local RockNames = {"All"} -- List Nama Batu (Targeting)
 local OreNames = {"All"}  -- List Nama Hasil/Ore (Filtering)
 local RarityDatabase = {} 
 local TempBlacklist = {} -- List batu yang harus dihindari sementara (Anti-Stuck)
+-- [[ SHOP GENERATOR ]] --
+local ShopPickaxes = {}
+local ShopPotions = {}
+local PotionDatabase = {}
+
+local RawPotionData = {
+    MinerPotion1 = "Miner Potion I",
+    HealthPotion1 = "Health Potion I",
+    HealthPotion2 = "Health Potion II",
+    AttackDamagePotion1 = "Damage Potion I",
+    MovementSpeedPotion1 = "Speed Potion I",
+    LuckPotion1 = "Luck Potion I"
+}
+
+local function RefreshShopLists()
+    -- 1. Scan Pickaxes (Dari Folder Assets)
+    table.clear(ShopPickaxes)
+    pcall(function()
+        local PickaxeFolder = Services.ReplicatedStorage:WaitForChild("Assets"):WaitForChild("Equipments"):WaitForChild("Pickaxes")
+        for _, tool in pairs(PickaxeFolder:GetChildren()) do
+            table.insert(ShopPickaxes, tool.Name)
+        end
+    end)
+    table.sort(ShopPickaxes)
+
+    -- 2. Scan Potions (Dari Data Manual)
+    table.clear(ShopPotions)
+    for key, realName in pairs(RawPotionData) do
+        table.insert(ShopPotions, realName)
+        PotionDatabase[realName] = key -- Simpan mapping jika butuh key nanti
+    end
+    table.sort(ShopPotions)
+end
+
+RefreshShopLists()
 
 local function RunAutoGenerator()
     print("[System] Starting Generator...")
@@ -546,6 +581,113 @@ local function ProcessAutoSell()
     end
 end
 
+-------- [[ SHOP LOGIC: HYBRID SYSTEM ]] --------
+
+local function FindShopItemPosition(ItemName)
+    print("[Shop] Mencari lokasi untuk: " .. ItemName)
+    local searchKey = string.lower(ItemName)
+
+    -- [[ LOGIC 1: KHUSUS PICKAXE (Cari Model Fisik) ]]
+    if string.find(ItemName, "Pickaxe") then
+        for _, obj in pairs(Services.Workspace:GetDescendants()) do
+            if obj.Name == ItemName and obj:IsA("Model") and not obj:IsDescendantOf(Services.Players) then
+                if obj.PrimaryPart then return obj.PrimaryPart.Position end
+                if obj:FindFirstChild("Handle") then return obj.Handle.Position end
+                if obj:FindFirstChild("Head") then return obj.Head.Position end
+                local anyPart = obj:FindFirstChildWhichIsA("BasePart", true)
+                if anyPart then return anyPart.Position end
+            end
+        end
+        
+    -- [[ LOGIC 2: KHUSUS POTION (Cari di Folder Proximity) ]]
+    else
+        -- Target Path: Workspace -> Proximity -> [Model] -> Handle -> Attachment -> BillboardGui -> Name -> TextLabel
+        local ProximityFolder = Services.Workspace:WaitForChild("Proximity", 2)
+        
+        if ProximityFolder then
+            -- Kita scan semua TextLabel yang ada di dalam folder Proximity biar akurat
+            for _, label in pairs(ProximityFolder:GetDescendants()) do
+                if label:IsA("TextLabel") then
+                    -- Cek apakah tulisan di label mengandung nama Potion (contoh: "miner potion i")
+                    if string.find(string.lower(label.Text), searchKey) then
+                        
+                        -- Kalau ketemu Text-nya, kita cari Part fisik (Handle) di atasnya buat dituju
+                        local HandlePart = label:FindFirstAncestor("Handle") or label:FindFirstAncestorWhichIsA("BasePart")
+                        
+                        if HandlePart then
+                            print("[Shop] Potion ketemu di: " .. HandlePart:GetFullName())
+                            return HandlePart.Position
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    return nil
+end
+
+local function BuyShopItem(ItemName, Quantity)
+    local TargetPos = FindShopItemPosition(ItemName)
+    
+    if not TargetPos then
+        WindUI:Notify({
+            Title = "Lokasi Tidak Ketemu",
+            Content = "Gagal cari lokasi '"..ItemName.."'. Pastikan item ada di map/Proximity.",
+            Duration = 4,
+            Icon = "alert-circle"
+        })
+        return
+    end
+
+    -- Simpan Posisi Awal
+    local Char = LocalPlayer.Character
+    local Root = Char and Char:FindFirstChild("HumanoidRootPart")
+    if not Root then return end
+
+    local OldPos = Root.Position
+    local wasFarming = _G_Flags.AutoFarm
+    local wasMobbing = _G_Flags.AutoFarmMobs
+    
+    -- [[ PENTING: MATIKAN FARM & NYALAKAN STATUS BELANJA ]]
+    _G_Flags.AutoFarm = false
+    _G_Flags.AutoFarmMobs = false
+    _G_Flags.IsSellingAction = true -- Flag ini mencegah karakter stuck diam!
+    
+    WindUI:Notify({ Title = "Otw Shop", Content = "Membeli " .. Quantity .. "x " .. ItemName, Duration = 2 })
+
+    -- 1. Jalan ke Toko
+    local arrived = TweenToPosition(TargetPos)
+    
+    if arrived then
+        task.wait(0.5)
+        -- 2. Eksekusi Remote Beli
+        local PurchaseRemote = Services.ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Packages"):WaitForChild("Knit"):WaitForChild("Services"):WaitForChild("ProximityService"):WaitForChild("RF"):WaitForChild("Purchase")
+        
+        if PurchaseRemote then
+            local success, err = pcall(function()
+                local args = { ItemName, Quantity }
+                return PurchaseRemote:InvokeServer(unpack(args))
+            end)
+            
+            if success then
+                WindUI:Notify({ Title = "Success", Content = "Berhasil membeli!", Icon = "check", Duration = 3 })
+            else
+                WindUI:Notify({ Title = "Gagal", Content = "Uang kurang / Error.", Icon = "x-circle", Duration = 3 })
+            end
+        end
+        
+        task.wait(0.5)
+        -- 3. Pulang
+        TweenToPosition(OldPos)
+    end
+
+    -- Resume
+    _G_Flags.IsSellingAction = false
+    if wasFarming then _G_Flags.AutoFarm = true end
+    if wasMobbing then _G_Flags.AutoFarmMobs = true end
+end
+
 ------- [[ UI CONSTRUCTION ]] -------
 -- 1. Tab Auto
 local AutoTab = Window:Tab({ Title = "Auto", Icon = "workflow" })
@@ -567,8 +709,9 @@ MiningSection:Toggle({
 MiningSection:Dropdown({ 
     Title = "Priority Rocks", 
     Desc = "Target MODEL name (Container)", 
+    SearchBarEnabled = true,
     Multi = true, 
-    Default = {"Iron", "Gold", "Lucky Block"}, 
+    AllowNone = true,
     Values = RockNames, 
     Callback = function(Value) _G_Flags.PriorityRocks = Value end 
 })
@@ -576,8 +719,9 @@ MiningSection:Dropdown({
 MiningSection:Dropdown({ 
     Title = "Backup Rocks", 
     Desc = "Target if Priority not found", 
+    SearchBarEnabled = true,
     Multi = true, 
-    Default = {"All"}, 
+    AllowNone = true,
     Values = RockNames, 
     Callback = function(Value) _G_Flags.BackupRocks = Value end 
 })
@@ -592,8 +736,9 @@ MiningSection:Toggle({
 MiningSection:Dropdown({ 
     Title = "Keep Ores", 
     Desc = "Select Ore/Drop name to KEEP", 
+    SearchBarEnabled = true,
     Multi = true, 
-    Default = {"Iron", "Gold", "Mithril", "Adurite", "Adamantite", "Runite", "Lucky Block", "Cobalt"}, 
+    AllowNone = true,
     Values = OreNames, 
     Callback = function(Value) _G_Flags.KeepOres = Value end 
 })
@@ -602,7 +747,7 @@ MiningSection:Slider({
     Title = "Stealth Depth", 
     Desc = "Player Y Offset (Negative = Underground)", 
     Step = 1, 
-    Value = { Min = -15, Max = 5, Default = -8 }, 
+    Value = { Min = -15, Max = 5, Default = -5 }, 
     Callback = function(Value) _G_Flags.FarmDepth = Value end 
 })
 
@@ -621,8 +766,9 @@ MobSection:Toggle({
 MobSection:Dropdown({ 
     Title = "Select Mobs", 
     Desc = "Target mobs to attack", 
+    SearchBarEnabled = true,
     Multi = true, 
-    Default = {"All"}, 
+    AllowNone = true,
     Values = MobNames, 
     Callback = function(Value) _G_Flags.SelectedMob = Value end 
 })
@@ -638,8 +784,10 @@ SellSection:Toggle({
 SellSection:Dropdown({
     Title = "Sell Rarity",
     Desc = "Select rarities to sell",
+    SearchBarEnabled = true,
     Multi = true, 
-    Default = {"Common", "Uncommon"},
+    AllowNone = true,
+    Value = {"Common", "Uncommon"},
     Values = {"Common", "Uncommon", "Rare", "Epic", "Legendary", "Mythic"},
     Callback = function(Value) _G_Flags.SellRarities = Value end
 })
@@ -719,18 +867,568 @@ MiscTab:Keybind({
     Callback = function() Window:Toggle() end 
 })
 
--- 3. Tab Shop (Empty)
+-- [[ SHOP TAB ]] --
 local ShopTab = Window:Tab({ Title = "Shop", Icon = "shopping-cart" })
--- ShopTab:Section({ Title = "Coming Soon" }) -- Optional: Biar ga kosong melompong
 
--- 4. Tab Player (Empty)
+-- Variable Lokal untuk Dropdown
+local SelectedPickaxeShop = nil
+local SelectedPotionShop = nil
+local PotionBuyQty = 1
+
+-- Section Pickaxes
+local PickaxeShopSection = ShopTab:Section({ Title = "Pickaxe Shop" })
+
+PickaxeShopSection:Dropdown({
+    Title = "Select Pickaxe",
+    Desc = "Pilih Pickaxe yang mau dibeli",
+    SearchBarEnabled = true,
+    Multi = false,
+    Value = nil,
+    AllowNone = true,
+    Values = ShopPickaxes, -- Mengambil dari list generator tadi
+    Callback = function(Value)
+        SelectedPickaxeShop = Value
+    end
+})
+
+PickaxeShopSection:Button({
+    Title = "Buy Pickaxe",
+    Desc = "Pergi ke lokasi & Beli (Qty: 1)",
+    Callback = function()
+        if SelectedPickaxeShop then
+            BuyShopItem(SelectedPickaxeShop, 1)
+        else
+            WindUI:Notify({ Title = "Select Item", Content = "Pilih Pickaxe dulu!", Duration = 2 })
+        end
+    end
+})
+
+-- Section Potions
+local PotionShopSection = ShopTab:Section({ Title = "Potion Shop" })
+
+PotionShopSection:Dropdown({
+    Title = "Select Potion",
+    Desc = "Pilih Potion/Extra yang mau dibeli",
+    SearchBarEnabled = true,
+    Multi = true,
+    Value = nil,
+    AllowNone = true,
+    Values = ShopPotions,
+    Callback = function(Value)
+        SelectedPotionShop = Value
+    end
+})
+
+PotionShopSection:Slider({
+    Title = "Quantity",
+    Desc = "Jumlah yang mau dibeli",
+    Step = 1,
+    Value = { Min = 1, Max = 100, Default = 1 },
+    Callback = function(Value)
+        PotionBuyQty = Value
+    end
+})
+
+PotionShopSection:Button({
+    Title = "Buy Potion",
+    Desc = "Pergi ke lokasi & Beli",
+    Callback = function()
+        if SelectedPotionShop then
+            BuyShopItem(SelectedPotionShop, PotionBuyQty)
+        else
+            WindUI:Notify({ Title = "Select Item", Content = "Pilih Potion dulu!", Duration = 2 })
+        end
+    end
+})
+
+-------- [[ PLAYER TAB: FORCE READER ]] --------
 local PlayerTab = Window:Tab({ Title = "Player", Icon = "user" })
 
--- 5. Tab Teleport (Empty)
+-- 1. DATA STORAGE
+local RaceDataMap = {} 
+local RaceListClean = {"Loading..."} 
+
+-- 2. FUNGSI PARSER (YANG DIPERBAIKI)
+local function ParseRaceData(data, raceName)
+    local fullText = ""
+    
+    -- A. Header Rarity
+    if data.Rarity then
+        fullText = fullText .. "[ Rarity: " .. tostring(data.Rarity) .. " ]\n\n"
+    end
+    
+    -- B. Coba BACA STATS (Versi Maksa)
+    if data.Stats and type(data.Stats) == "table" then
+        for i, statInfo in pairs(data.Stats) do
+            -- Coba segala kemungkinan nama Key
+            local sName = statInfo.Name or statInfo.name or statInfo.Title or ("Stat " .. i)
+            local sDesc = statInfo.Description or statInfo.description or statInfo.Desc or statInfo.Info or "..."
+            
+            fullText = fullText .. "• " .. tostring(sName) .. ": " .. tostring(sDesc) .. "\n"
+        end
+    end
+
+    -- C. Coba BACA TRAITS (Cadangan kalau Stats kosong/gagal)
+    -- Karena di data yang kamu kirim ada table "Traits" juga
+    if data.Traits and type(data.Traits) == "table" then
+        local traitText = ""
+        for _, t in pairs(data.Traits) do
+            -- Ambil Id atau Name dari Traits
+            local tName = t.Id or t.Name
+            if tName then
+                -- Coba cari value angkanya (misal: DamageBoost = 10)
+                local tVal = ""
+                for k,v in pairs(t) do
+                    if k ~= "Id" and k ~= "Name" and type(v) == "number" then
+                        tVal = tVal .. " (+" .. tostring(v) .. " " .. tostring(k) .. ")"
+                    end
+                end
+                traitText = traitText .. "  > " .. tostring(tName) .. tVal .. "\n"
+            end
+        end
+        
+        if traitText ~= "" then
+            fullText = fullText .. "\n[ Passive Traits ]:\n" .. traitText
+        end
+    end
+
+    -- D. Final Check (Kalau kosong melompong)
+    if fullText == "" then fullText = "No stats/description data found." end
+    
+    return fullText
+end
+
+-- 3. SCANNER DATA (SAFE MODE)
+local function LoadRaceData()
+    local TempMap = {}
+    local TempList = {}
+    
+    -- Pakai pcall biar Tab bawah ga ilang kalau error
+    pcall(function()
+        local RacesFolder = Services.ReplicatedStorage:WaitForChild("Shared", 3):WaitForChild("Data", 3):WaitForChild("Races", 3)
+        
+        if RacesFolder then
+            for _, module in pairs(RacesFolder:GetChildren()) do
+                if module:IsA("ModuleScript") then
+                    local CleanName = string.gsub(module.Name, "^%d+%s*-%s*", "")
+                    
+                    local success, mData = pcall(require, module)
+                    if success and mData then
+                        local desc = ParseRaceData(mData, CleanName)
+                        TempMap[CleanName] = desc
+                        table.insert(TempList, CleanName)
+                    end
+                end
+            end
+        end
+    end)
+
+    if #TempList > 0 then
+        table.sort(TempList)
+        RaceListClean = TempList
+        RaceDataMap = TempMap
+    else
+        RaceListClean = {"Data Error / Kosong"}
+    end
+end
+
+LoadRaceData()
+
+-- 4. FUNGSI MY RACE
+local function GetMyRaceName()
+    if PlayerController and PlayerController.Replica and PlayerController.Replica.Data then
+        local rawRace = PlayerController.Replica.Data.Race or "Human"
+        return string.gsub(rawRace, "^%d+%s*-%s*", "") 
+    end
+    return "Unknown"
+end
+
+-- [[ UI DISPLAY ]] --
+local MyStatsSection = PlayerTab:Section({ Title = "My Stats" })
+local MyRaceTitle = MyStatsSection:Paragraph({ Title = "Current Race", Content = "Loading..." })
+
+local function RefreshMyStats()
+    local myRace = GetMyRaceName()
+    MyRaceTitle:SetTitle("Current Race: " .. myRace)
+    
+    if RaceDataMap[myRace] then
+        MyRaceTitle:SetContent(RaceDataMap[myRace])
+    else
+        MyRaceTitle:SetContent("Stats info tidak tersedia.")
+    end
+end
+
+MyStatsSection:Button({ Title = "Refresh Info", Callback = RefreshMyStats })
+task.delay(1.5, RefreshMyStats)
+
+local LibrarySection = PlayerTab:Section({ Title = "Race Encyclopedia" })
+local SelectedInfo = LibrarySection:Paragraph({ Title = "Race Info", Content = "Pilih race untuk melihat detail." })
+
+LibrarySection:Dropdown({
+    Title = "Select Race",
+    Desc = "Database Stats & Traits",
+    Values = RaceListClean,
+    Multi = false,
+    Default = nil,
+    Callback = function(Value)
+        if RaceDataMap[Value] then
+            SelectedInfo:SetTitle(Value)
+            SelectedInfo:SetContent(RaceDataMap[Value])
+        end
+    end
+})
+
+-------- [[ TELEPORT TAB: NPC LIST ]] --------
 local TeleportTab = Window:Tab({ Title = "Teleport", Icon = "map" })
 
--- 6. Tab Settings (Empty)
+-- 1. DATA VARIABLES
+local NPCList = {} 
+
+-- 2. FUNGSI SCANNER NPC (Dari Dialogues)
+local function RefreshNPCList()
+    table.clear(NPCList)
+    local DialoguesFolder = Services.ReplicatedStorage:WaitForChild("Dialogues", 5)
+    
+    if DialoguesFolder then
+        for _, folder in pairs(DialoguesFolder:GetChildren()) do
+            -- Kita ambil nama foldernya sebagai nama NPC
+            table.insert(NPCList, folder.Name)
+        end
+        table.sort(NPCList)
+    else
+        table.insert(NPCList, "Error: Folder not found")
+    end
+end
+
+RefreshNPCList()
+
+-- 3. FUNGSI TELEPORT LOGIC
+local function TeleportToNPC(npcName)
+    -- Cari NPC di Workspace (Bisa model bernama "npcName" atau folder NPC)
+    local TargetParams = {npcName, "Alchemist", "Blacksmith", "Merchant"} -- Tambahan nama umum jika beda
+    local TargetPos = nil
+    
+    -- Cara 1: Cari Nama Persis
+    local found = Services.Workspace:FindFirstChild(npcName, true)
+    if found then
+        TargetPos = found:GetPivot().Position
+    else
+        -- Cara 2: Cari ProximityPrompt yang parent-nya mirip
+        for _, prompt in pairs(Services.Workspace:GetDescendants()) do
+            if prompt:IsA("ProximityPrompt") then
+                local parent = prompt.Parent
+                -- Cek apakah nama NPC ada di dalam nama Parent prompt
+                if parent and string.find(string.lower(parent.Name), string.lower(npcName)) then
+                     TargetPos = parent.Position
+                     break
+                end
+                
+                -- Cek ActionText (Misal: "Talk to Maria")
+                if string.find(string.lower(prompt.ActionText), string.lower(npcName)) then
+                    TargetPos = parent.Position
+                    break
+                end
+            end
+        end
+    end
+
+    -- Eksekusi Teleport
+    if TargetPos then
+        WindUI:Notify({ Title = "Teleport", Content = "Otw ke " .. npcName .. "...", Duration = 3 })
+        
+        -- Matikan farm sebentar biar ga conflict
+        local wasFarming = _G_Flags.AutoFarm
+        local wasMobbing = _G_Flags.AutoFarmMobs
+        _G_Flags.AutoFarm = false
+        _G_Flags.AutoFarmMobs = false
+        _G_Flags.IsSellingAction = true -- Pakai flag ini biar loop bawah gak reset physics
+        
+        local arrived = TweenToPosition(TargetPos)
+        
+        if arrived then
+            WindUI:Notify({ Title = "Arrived", Content = "Sampai di tujuan!", Icon = "check", Duration = 2 })
+        end
+        
+        -- Kembalikan state (tapi user harus nyalain farm lagi manual kalau mau farm)
+        _G_Flags.IsSellingAction = false
+        -- _G_Flags.AutoFarm = wasFarming (Opsional: Kalau mau otomatis lanjut farm, uncomment ini)
+    else
+        WindUI:Notify({ Title = "Gagal", Content = "NPC tidak ditemukan di Map!", Icon = "alert-circle", Duration = 3 })
+    end
+end
+
+-- [[ UI CONSTRUCTION ]] --
+local TeleportSection = TeleportTab:Section({ Title = "NPC Teleport" })
+
+local SelectedNPC = nil
+
+TeleportSection:Dropdown({
+    Title = "Select NPC",
+    Desc = "Daftar NPC dari Dialogues",
+    Values = NPCList,
+    Multi = false,
+    Default = nil,
+    Callback = function(Value)
+        SelectedNPC = Value
+    end
+})
+
+TeleportSection:Button({
+    Title = "Teleport Now",
+    Desc = "Pergi ke lokasi NPC terpilih",
+    Callback = function()
+        if SelectedNPC then
+            TeleportToNPC(SelectedNPC)
+        else
+            WindUI:Notify({ Title = "Select NPC", Content = "Pilih NPC dulu di dropdown!", Duration = 2 })
+        end
+    end
+})
+
+TeleportSection:Button({
+    Title = "Refresh List",
+    Desc = "Scan ulang folder Dialogues",
+    Callback = function()
+        RefreshNPCList()
+        WindUI:Notify({ Title = "Refreshed", Content = "List NPC diperbarui.", Duration = 2 })
+    end
+})
+
+-------- [[ SETTINGS TAB: ESSENTIALS + FPS BOOST ]] --------
 local SettingsTab = Window:Tab({ Title = "Settings", Icon = "settings" })
+
+-- VARIABLES
+local _G_Settings = {
+    Fullbright = false,
+    NoFog = false,
+    WalkSpeed = 16,
+    JumpPower = 50,
+    InfJump = false
+}
+
+-- [[ 1. VISUAL ESSENTIALS ]] --
+local VisualSection = SettingsTab:Section({ Title = "Visuals & Performance" })
+
+VisualSection:Button({
+    Title = "FPS Boost (Potato Mode)",
+    Desc = "Hapus tekstur & efek biar ringan (Anti-Lag)",
+    Callback = function()
+        -- Konfirmasi visual
+        WindUI:Notify({ Title = "FPS Boost", Content = "Mengoptimalkan grafis...", Duration = 2 })
+        
+        -- 1. Optimasi Global Lighting
+        local Terrain = workspace:FindFirstChildOfClass("Terrain")
+        if Terrain then
+            Terrain.WaterWaveSize = 0
+            Terrain.WaterWaveSpeed = 0
+            Terrain.WaterReflectance = 0
+            Terrain.WaterTransparency = 0
+        end
+        
+        local Lighting = game:GetService("Lighting")
+        Lighting.GlobalShadows = false
+        Lighting.FogEnd = 9e9
+        settings().Rendering.QualityLevel = 1 -- Set quality level ke terendah secara internal
+        
+        -- Hapus efek post-processing (Bloom, Blur, SunRays)
+        for _, v in pairs(Lighting:GetDescendants()) do
+            if v:IsA("PostEffect") or v:IsA("Atmosphere") or v:IsA("Cloud") then
+                v:Destroy()
+            end
+        end
+
+        -- 2. Optimasi Part & Material (Looping Workspace)
+        for _, v in pairs(game:GetService("Workspace"):GetDescendants()) do
+            -- Ubah Part jadi plastik
+            if v:IsA("BasePart") and not v:IsA("Terrain") then
+                v.Material = Enum.Material.SmoothPlastic
+                v.Reflectance = 0
+                v.CastShadow = false
+                v.TopSurface = Enum.SurfaceType.Smooth
+            end
+            
+            -- Hapus Texture & Decal pada object
+            if v:IsA("Decal") or v:IsA("Texture") then
+                v:Destroy()
+            end
+            
+            -- Matikan Partikel (Asap, Api, Sparkle)
+            if v:IsA("ParticleEmitter") or v:IsA("Trail") or v:IsA("Smoke") or v:IsA("Fire") or v:IsA("Sparkles") then
+                v.Enabled = false
+            end
+        end
+        
+        WindUI:Notify({ Title = "Success", Content = "FPS Boost Aktif! Grafik jadi kentang.", Icon = "check", Duration = 3 })
+    end
+})
+
+VisualSection:Toggle({
+    Title = "Fullbright",
+    Desc = "Bikin map jadi terang (Anti-Gelap)",
+    Value = false,
+    Callback = function(Value)
+        _G_Settings.Fullbright = Value
+        if Value then
+            task.spawn(function()
+                while _G_Settings.Fullbright do
+                    game:GetService("Lighting").Brightness = 2
+                    game:GetService("Lighting").ClockTime = 14
+                    game:GetService("Lighting").GlobalShadows = false
+                    game:GetService("Lighting").Ambient = Color3.fromRGB(255, 255, 255)
+                    game:GetService("Lighting").OutdoorAmbient = Color3.fromRGB(255, 255, 255)
+                    task.wait(1)
+                end
+            end)
+        end
+    end
+})
+
+VisualSection:Toggle({
+    Title = "No Fog",
+    Desc = "Hapus kabut biar pandangan jauh",
+    Value = false,
+    Callback = function(Value)
+        _G_Settings.NoFog = Value
+        if Value then
+            game:GetService("Lighting").FogEnd = 100000
+            for _, v in pairs(game:GetService("Lighting"):GetDescendants()) do
+                if v:IsA("Atmosphere") then v:Destroy() end
+            end
+        else
+            game:GetService("Lighting").FogEnd = 500
+        end
+    end
+})
+
+-- [[ 2. CHARACTER MODIFIERS ]] --
+local CharSection = SettingsTab:Section({ Title = "Character" })
+
+CharSection:Slider({
+    Title = "Walk Speed",
+    Desc = "Kecepatan jalan manual",
+    Step = 1,
+    Value = { Min = 16, Max = 200, Default = 16 },
+    Callback = function(Value)
+        _G_Settings.WalkSpeed = Value
+        local Char = LocalPlayer.Character
+        if Char and Char:FindFirstChild("Humanoid") then
+            Char.Humanoid.WalkSpeed = Value
+        end
+    end
+})
+
+CharSection:Slider({
+    Title = "Jump Power",
+    Desc = "Kekuatan lompat",
+    Step = 1,
+    Value = { Min = 50, Max = 300, Default = 50 },
+    Callback = function(Value)
+        _G_Settings.JumpPower = Value
+        local Char = LocalPlayer.Character
+        if Char and Char:FindFirstChild("Humanoid") then
+            Char.Humanoid.UseJumpPower = true
+            Char.Humanoid.JumpPower = Value
+        end
+    end
+})
+
+CharSection:Toggle({
+    Title = "Infinite Jump",
+    Desc = "Lompat di udara berkali-kali",
+    Value = false,
+    Callback = function(Value)
+        _G_Settings.InfJump = Value
+    end
+})
+
+-- Logic Loop Character (Biar permanen walau mati)
+task.spawn(function()
+    Services.UserInputService.JumpRequest:Connect(function()
+        if _G_Settings.InfJump then
+            local Char = LocalPlayer.Character
+            if Char and Char:FindFirstChild("Humanoid") then
+                Char.Humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+            end
+        end
+    end)
+
+    while true do
+        task.wait(1)
+        local Char = LocalPlayer.Character
+        if Char and Char:FindFirstChild("Humanoid") then
+            if Char.Humanoid.WalkSpeed ~= _G_Settings.WalkSpeed and _G_Settings.WalkSpeed > 16 then
+                Char.Humanoid.WalkSpeed = _G_Settings.WalkSpeed
+            end
+            if Char.Humanoid.JumpPower ~= _G_Settings.JumpPower and _G_Settings.JumpPower > 50 then
+                Char.Humanoid.UseJumpPower = true
+                Char.Humanoid.JumpPower = _G_Settings.JumpPower
+            end
+        end
+    end
+end)
+
+-- [[ 3. SYSTEM / GAME ]] --
+local SystemSection = SettingsTab:Section({ Title = "System" })
+
+SystemSection:Button({
+    Title = "Rejoin Server",
+    Desc = "Masuk ulang ke server yang sama",
+    Callback = function()
+        local ts = game:GetService("TeleportService")
+        local p = game:GetService("Players").LocalPlayer
+        ts:TeleportToPlaceInstance(game.PlaceId, game.JobId, p)
+    end
+})
+
+SystemSection:Button({
+    Title = "Server Hop",
+    Desc = "Pindah ke server lain (Cari server baru)",
+    Callback = function()
+        WindUI:Notify({ Title = "Server Hop", Content = "Mencari server kosong...", Duration = 3 })
+        local Http = game:GetService("HttpService")
+        local TPS = game:GetService("TeleportService")
+        local Api = "https://games.roblox.com/v1/games/"
+        local PlaceId = game.PlaceId
+        local _servers = Api..PlaceId.."/servers/Public?sortOrder=Asc&limit=100"
+        
+        local function ListServers(cursor)
+            local Raw = game:HttpGet(_servers .. ((cursor and "&cursor="..cursor) or ""))
+            return Http:JSONDecode(Raw)
+        end
+        
+        local Server, Next; repeat
+            local Servers = ListServers(Next)
+            Server = Servers.data[1]
+            Next = Servers.nextPageCursor
+        until Server
+        
+        TPS:TeleportToPlaceInstance(PlaceId, Server.id, game.Players.LocalPlayer)
+    end
+})
+
+SystemSection:Button({
+    Title = "Unload UI",
+    Desc = "Tutup menu & hapus script",
+    Callback = function()
+        _G_Flags.AutoFarm = false
+        _G_Flags.AutoFarmMobs = false
+        if Window then 
+            for _, gui in pairs(game.CoreGui:GetChildren()) do
+                 if gui.Name == "CatrazHubButton" then gui:Destroy() end
+            end
+            -- Hapus UI Utama (Pastikan nama folder di window creation adalah 'chub')
+            local ui = game:GetService("CoreGui"):FindFirstChild("chub")
+            if ui then ui:Destroy() end
+        end
+    end
+})
+
+-- [[ 4. ANTI AFK ]] --
+local VirtualUser = game:GetService("VirtualUser")
+LocalPlayer.Idled:Connect(function()
+    VirtualUser:CaptureController()
+    VirtualUser:ClickButton2(Vector2.new())
+end)
 
 ------- [[ LOGIC LOOPS (WORKERS) ]] -------
 
@@ -937,7 +1635,19 @@ task.spawn(function()
                         end
                     end
                 else ToggleFloat(false) task.wait(1) end
+            
+            -----------------------------------------------------------
+            -- SISIPKAN INI DI SINI (JANGAN DIHAPUS, INI PENYELAMATNYA)
+            -----------------------------------------------------------
+            elseif _G_Flags.IsSellingAction then
+                 -- Diamkan logic ini. Biarkan fungsi Shop yang mengontrol karakter.
+                 task.wait(0.1) 
+            -----------------------------------------------------------
+
+            else 
+                ResetPhysics() -- Bagian ini bikin stuck kalau "SellingAction" tidak ditambahkan di atasnya
+                task.wait(1) 
             end
-        else ResetPhysics() task.wait(1) end
+        end
     end
 end)
