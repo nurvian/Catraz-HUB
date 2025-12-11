@@ -180,7 +180,7 @@ WindUI:SetTheme("Native Red")
 
 local Window = WindUI:CreateWindow({
     Title = "Catraz Hub | The Forge",
-    Folder = "chub",
+    Folder = "CatrazHub",
     Icon = "rbxassetid://124162045221605", 
     NewElements = true,
     Transparent = true,
@@ -208,6 +208,19 @@ local Window = WindUI:CreateWindow({
     },
 })
 
+-- [[ 1. VERSION TAG (BETA) ]] --
+Window:Tag({
+    Title = "v4.0-BETA",
+    Icon = "github", -- Ikon Github
+    Color = Color3.fromHex("#0a0a0a"), -- Warna Hijau Stabilo
+})
+
+Window:DisableTopbarButtons({
+    "Close", 
+    "Minimize", 
+    "Fullscreen",
+})
+
 WindUI:Notify({
     Title = "Catraz Hub Loaded",
     Content = "Success load Catraz Hub v3.7 (Fix)",
@@ -215,51 +228,155 @@ WindUI:Notify({
     Icon = "badge-check", 
 })
 
--- [[ CUSTOM TOGGLE UI SYSTEM ]] --
+
+
+-- [[ CUSTOM TOGGLE UI SYSTEM & MINI DASHBOARD ]] --
 task.spawn(function()
     local CoreGui = game:GetService("CoreGui")
     local TweenService = game:GetService("TweenService")
-    local NameUI = "CatrazHubButton"
+    local RunService = game:GetService("RunService")
+    local Stats = game:GetService("Stats")
+    
+    local NameUI = "CatrazHubSystem"
     if CoreGui:FindFirstChild(NameUI) then CoreGui[NameUI]:Destroy() end
+    
     local ScreenGui = Instance.new("ScreenGui")
     ScreenGui.Name = NameUI
     ScreenGui.Parent = CoreGui
     ScreenGui.ResetOnSpawn = false
     
+    -- Variables State
+    local IsMenuOpen = true -- Asumsi awal menu terbuka
+    
+    -- 1. TOGGLE BUTTON
     local ToggleBtn = Instance.new("ImageButton")
     ToggleBtn.Name = "MainButton"
     ToggleBtn.Parent = ScreenGui
-    ToggleBtn.Position = UDim2.new(0.1, 0, 0.2, 0)
-    ToggleBtn.Size = UDim2.new(0, 60, 0, 60)
-    ToggleBtn.BackgroundColor3 = Color3.new(0, 0, 0)
-    ToggleBtn.BackgroundTransparency = 0 
+    ToggleBtn.Position = UDim2.new(0.05, 0, 0.45, 0) -- Posisi Default (Kiri Tengah)
+    ToggleBtn.Size = UDim2.new(0, 50, 0, 50)
+    ToggleBtn.BackgroundColor3 = Color3.fromHex("#140808")
+    ToggleBtn.BackgroundTransparency = 0.2
     ToggleBtn.Draggable = true
-    
+    ToggleBtn.AutoButtonColor = false -- Matikan default biar kita custom animasinya
+
     local BtnCorner = Instance.new("UICorner")
-    BtnCorner.CornerRadius = UDim.new(1, 0)
+    BtnCorner.CornerRadius = UDim.new(0.3, 0)
     BtnCorner.Parent = ToggleBtn
+
+    local BtnStroke = Instance.new("UIStroke")
+    BtnStroke.Parent = ToggleBtn
+    BtnStroke.Color = Color3.fromHex("#ff5e5e")
+    BtnStroke.Thickness = 2.5
+    BtnStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
     local IconImage = Instance.new("ImageLabel")
     IconImage.Parent = ToggleBtn
     IconImage.BackgroundTransparency = 1 
     IconImage.AnchorPoint = Vector2.new(0.5, 0.5)
     IconImage.Position = UDim2.new(0.5, 0, 0.5, 0)
-    IconImage.Size = UDim2.new(1, 0, 1, 0)
-    IconImage.Image = "rbxassetid://124162045221605"
-    IconImage.ScaleType = Enum.ScaleType.Crop
+    IconImage.Size = UDim2.new(0.7, 0, 0.7, 0)
+    IconImage.Image = "rbxassetid://124162045221605" -- Logo Catraz
+    IconImage.ScaleType = Enum.ScaleType.Fit
     
-    local ImageCorner = Instance.new("UICorner")
-    ImageCorner.CornerRadius = UDim.new(1, 0)
-    ImageCorner.Parent = IconImage
+    -- 2. MINI DASHBOARD (Status Box)
+    local StatusFrame = Instance.new("Frame")
+    StatusFrame.Name = "StatusDashboard"
+    StatusFrame.Parent = ScreenGui
+    StatusFrame.Position = UDim2.new(0.5, 0, 0.05, 0) -- Posisi Atas Tengah
+    StatusFrame.AnchorPoint = Vector2.new(0.5, 0)
+    StatusFrame.Size = UDim2.new(0, 300, 0, 65)
+    StatusFrame.BackgroundColor3 = Color3.fromHex("#0f0505")
+    StatusFrame.BackgroundTransparency = 0.1
+    StatusFrame.Visible = false -- Default mati (karena menu buka)
+
+    local StatusCorner = Instance.new("UICorner")
+    StatusCorner.CornerRadius = UDim.new(0, 8)
+    StatusCorner.Parent = StatusFrame
     
-    local UIStroke = Instance.new("UIStroke")
-    UIStroke.Parent = ToggleBtn
-    UIStroke.Color = Color3.fromHex("#ff5e5e")
-    UIStroke.Thickness = 3
-    UIStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    local StatusStroke = Instance.new("UIStroke")
+    StatusStroke.Parent = StatusFrame
+    StatusStroke.Color = Color3.fromHex("#451a1a")
+    StatusStroke.Thickness = 2
+    
+    -- Hiasan Garis Merah di Kiri
+    local AccentBar = Instance.new("Frame")
+    AccentBar.Parent = StatusFrame
+    AccentBar.BackgroundColor3 = Color3.fromHex("#ff5e5e")
+    AccentBar.Size = UDim2.new(0, 4, 1, 0)
+    AccentBar.BorderSizePixel = 0
+    local BarCorner = Instance.new("UICorner"); BarCorner.Parent = AccentBar
+
+    -- Isi Teks Dashboard
+    local TitleLabel = Instance.new("TextLabel")
+    TitleLabel.Parent = StatusFrame
+    TitleLabel.BackgroundTransparency = 1
+    TitleLabel.Position = UDim2.new(0, 15, 0, 5)
+    TitleLabel.Size = UDim2.new(1, -20, 0, 20)
+    TitleLabel.Font = Enum.Font.GothamBold
+    TitleLabel.Text = "CATRAZ HUB | <font color='#ff5e5e'>THE FORGE</font>"
+    TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    TitleLabel.TextSize = 14
+    TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+    TitleLabel.RichText = true
+
+    local StatsLabel = Instance.new("TextLabel")
+    StatsLabel.Parent = StatusFrame
+    StatsLabel.BackgroundTransparency = 1
+    StatsLabel.Position = UDim2.new(0, 15, 0, 28)
+    StatsLabel.Size = UDim2.new(1, -20, 0, 30)
+    StatsLabel.Font = Enum.Font.GothamMedium
+    StatsLabel.Text = "Loading Stats..."
+    StatsLabel.TextColor3 = Color3.fromHex("#cccccc")
+    StatsLabel.TextSize = 12
+    StatsLabel.TextXAlignment = Enum.TextXAlignment.Left
+    
+    -- 3. ANIMATION & LOGIC
+    local function PlayClickAnim()
+        -- Efek mengecil (Press)
+        TweenService:Create(ToggleBtn, TweenInfo.new(0.1), {Size = UDim2.new(0, 40, 0, 40)}):Play()
+        task.wait(0.1)
+        -- Efek membal balik (Bounce)
+        TweenService:Create(ToggleBtn, TweenInfo.new(0.3, Enum.EasingStyle.Elastic), {Size = UDim2.new(0, 50, 0, 50)}):Play()
+    end
+
+    local function FormatTime(seconds)
+        local h = math.floor(seconds / 3600)
+        local m = math.floor((seconds % 3600) / 60)
+        local s = math.floor(seconds % 60)
+        return string.format("%02d:%02d:%02d", h, m, s)
+    end
 
     ToggleBtn.MouseButton1Click:Connect(function()
-        Window:Toggle()
+        PlayClickAnim()
+        Window:Toggle() -- Toggle Menu Utama
+        
+        IsMenuOpen = not IsMenuOpen
+        
+        -- Logic: Kalau Menu Buka -> Dashboard Mati. Kalau Menu Tutup -> Dashboard Nyala.
+        StatusFrame.Visible = not IsMenuOpen 
+        
+        if not IsMenuOpen then
+            -- Efek Fade In Dashboard
+            StatusFrame.BackgroundTransparency = 1
+            TitleLabel.TextTransparency = 1
+            StatsLabel.TextTransparency = 1
+            
+            TweenService:Create(StatusFrame, TweenInfo.new(0.3), {BackgroundTransparency = 0.1}):Play()
+            TweenService:Create(TitleLabel, TweenInfo.new(0.3), {TextTransparency = 0}):Play()
+            TweenService:Create(StatsLabel, TweenInfo.new(0.3), {TextTransparency = 0}):Play()
+        end
+    end)
+
+    -- 4. LIVE STATS LOOP
+    RunService.RenderStepped:Connect(function(deltaTime)
+        if StatusFrame.Visible then
+            local fps = math.floor(1 / deltaTime)
+            local ping = math.floor(Stats.Network.ServerStatsItem["Data Ping"]:GetValue())
+            local runtime = FormatTime(workspace.DistributedGameTime)
+            local realTime = os.date("%H:%M:%S")
+            
+            StatsLabel.Text = string.format("FPS: %d  |  Ping: %d ms\nTime: %s  |  Runtime: %s", fps, ping, realTime, runtime)
+        end
     end)
 end)
 
@@ -689,6 +806,77 @@ local function BuyShopItem(ItemName, Quantity)
 end
 
 ------- [[ UI CONSTRUCTION ]] -------
+
+-------- [[ TAB: HOME / INFO (DEFAULT OPEN) ]] --------
+local HomeTab = Window:Tab({ Title = "Home", Icon = "tv-minimal" })
+
+-- Section 1: Community & Info
+local InfoSec = HomeTab:Section({ 
+    Title = "Community & Support",
+    Opened = true,
+    Box = true,
+})
+
+InfoSec:Section({
+    Title = "Welcome to Catraz Hub!",
+    TextSize = 24,
+})
+
+InfoSec:Section({
+    Title = "The best Script Hub for The Forge & Fish It. Join our Discord for the latest updates, giveaways, and support.",
+    TextSize = 18,
+    TextTransparency = .35,
+})
+
+InfoSec:Button({
+    Title = "Copy Discord Link",
+    Desc = "Click to copy the invite link",
+    Callback = function()
+        setclipboard("https://discord.gg/XVcWDFCYSu") -- GANTI LINK DISINI
+        WindUI:Notify({
+            Title = "Copied!",
+            Content = "Discord link successfully copied to clipboard.",
+            Icon = "copy",
+            Duration = 2
+        })
+    end
+})
+
+-- Section 2: Changelog (Update Terbaru)
+local ChangeSec = HomeTab:Section({ 
+    Title = "Changelog v0.7" ,
+    Opened = true,
+    Box = true,
+})
+
+ChangeSec:Section({
+    Title = "What's New?",
+    TextSize = 24,
+})
+ChangeSec:Section({
+    Title = "[+] UI Overhaul: New, cleaner & more modern look. \n[+] Performance: Much lighter & faster. \n[+] Added: Mini Dashboard (Status Box) when the menu is minimized. \n[+] Added: Bouncy Toggle Button Animation. \n[+] Fixed: Auto Shop & Selling Logic (Anti-Stuck). \n[+] Fixed: Mining Ore Skip Detection (More accurate).",
+    TextSize = 18,
+    TextTransparency = .35,
+})
+
+-- Section 3: Feature Overview
+local FiturSec = HomeTab:Section({ 
+    Title = "Feature Overview",
+    Opened = true, 
+    Box = true,
+})
+
+FiturSec:Section({
+    Title = "Available Features",
+    TextSize = 24,
+})
+
+FiturSec:Section({
+    Title = "• Auto Farm: Automatic mining with smart filters. \n• Auto Shop: Buy Pickaxe & Potion automatically runs itself. \n• Teleport: Move to any NPC instantly. \n• Minigame: Auto resolver for Forge (Melt, Pour, Hammer). (Buggy) \n• FPS Boost: Potato mode to reduce lag.",
+    TextSize = 18,
+    TextTransparency = .35,
+})
+
 -- 1. Tab Auto
 local AutoTab = Window:Tab({ Title = "Auto", Icon = "workflow" })
 
@@ -856,15 +1044,6 @@ SafetySection:Toggle({
     Callback = function(Value) 
         ToggleAntiLava(Value)
     end 
-})
-
--- 2. Tab Misc
-local MiscTab = Window:Tab({ Title = "Misc", Icon = "backpack" })
-MiscTab:Keybind({ 
-    Title = "Hide Menu", 
-    Desc = "Toggle UI (Default: Right Ctrl)", 
-    Default = Enum.KeyCode.RightControl, 
-    Callback = function() Window:Toggle() end 
 })
 
 -- [[ SHOP TAB ]] --
@@ -1406,20 +1585,37 @@ SystemSection:Button({
     end
 })
 
-SystemSection:Button({
-    Title = "Unload UI",
-    Desc = "Tutup menu & hapus script",
+SettingsTab:Button({
+    Title = "Unload UI (Clean)",
+    Desc = "Remove Menu, Dashboard, & Buttons",
     Callback = function()
+        -- 1. Matikan Semua Fitur
         _G_Flags.AutoFarm = false
         _G_Flags.AutoFarmMobs = false
-        if Window then 
-            for _, gui in pairs(game.CoreGui:GetChildren()) do
-                 if gui.Name == "CatrazHubButton" then gui:Destroy() end
-            end
-            -- Hapus UI Utama (Pastikan nama folder di window creation adalah 'chub')
-            local ui = game:GetService("CoreGui"):FindFirstChild("chub")
-            if ui then ui:Destroy() end
+        _G_Flags.IsSellingAction = false
+        
+        local CoreGui = game:GetService("CoreGui")
+        
+        -- 2. HAPUS CUSTOM UI KITA (Dashboard & Tombol)
+        if CoreGui:FindFirstChild("CatrazHubSystem") then
+            CoreGui["CatrazHubSystem"]:Destroy()
         end
+        
+        -- 3. HAPUS WIND UI (Cara Correct)
+        -- Kita coba panggil fungsi destroy bawaan librarynya.
+        -- Biasanya WindUI punya fungsi ini untuk membersihkan dirinya sendiri.
+        if Window and Window.Destroy then
+            Window:Destroy()
+        elseif WindUI and WindUI.Destroy then
+            WindUI:Destroy()
+        end
+
+        -- Notifikasi Terakhir
+        Services.StarterGui:SetCore("SendNotification", {
+            Title = "Catraz Hub",
+            Text = "Unloaded Successfully!",
+            Duration = 2
+        })
     end
 })
 
