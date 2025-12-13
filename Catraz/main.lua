@@ -1,7 +1,7 @@
 local games = {
     [121864768012064] = "https://raw.githubusercontent.com/nurvian/Catraz-HUB/refs/heads/main/Catraz/games/FishIt.lua", 
-    [76558904092080]  = "https://raw.githubusercontent.com/nurvian/Catraz-HUB/refs/heads/main/Catraz/games/TheForge.lua", 
-    [129009554587176] = "https://raw.githubusercontent.com/nurvian/Catraz-HUB/refs/heads/main/Catraz/games/TheForge.lua"
+    [76558904092080]  = "https://api.junkie-development.de/api/v1/luascripts/public/ea8ae5d36a20a896bb7f85ea42d1378ea6925566a1ddfb715928d016ad3fe70e/download", 
+    [129009554587176] = "https://api.junkie-development.de/api/v1/luascripts/public/ea8ae5d36a20a896bb7f85ea42d1378ea6925566a1ddfb715928d016ad3fe70e/download"
 }
 
 local currentID = game.PlaceId
