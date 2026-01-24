@@ -1,8 +1,8 @@
 local games = {
-    [121864768012064] = "https://api.luarmor.net/files/v4/loaders/5fa04da167bca2a54d732a446fc168c5.lua", 
-    [76558904092080]  = "https://api.luarmor.net/files/v4/loaders/df7f1ca84a4dcd17d4043c7f2330888a.lua", 
-    [129009554587176] = "https://api.luarmor.net/files/v4/loaders/df7f1ca84a4dcd17d4043c7f2330888a.lua",
-    [131884594917121] = "https://api.luarmor.net/files/v4/loaders/df7f1ca84a4dcd17d4043c7f2330888a.lua",
+    [121864768012064] = "https://api.jnkie.com/api/v1/luascripts/public/97afe9c02a8026a11c091fedb8e687bd4c866ee7ac2a7a292bb9513ad65b5c5a/download", 
+    [76558904092080]  = "https://api.jnkie.com/api/v1/luascripts/public/ea8ae5d36a20a896bb7f85ea42d1378ea6925566a1ddfb715928d016ad3fe70e/download", 
+    [129009554587176] = "https://api.jnkie.com/api/v1/luascripts/public/ea8ae5d36a20a896bb7f85ea42d1378ea6925566a1ddfb715928d016ad3fe70e/download",
+    [131884594917121] = "https://api.jnkie.com/api/v1/luascripts/public/ea8ae5d36a20a896bb7f85ea42d1378ea6925566a1ddfb715928d016ad3fe70e/download",
 }
 
 local currentID = game.PlaceId
