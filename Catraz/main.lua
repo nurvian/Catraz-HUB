@@ -5,6 +5,7 @@ local games = {
     [131884594917121] = "https://api.jnkie.com/api/v1/luascripts/public/ea8ae5d36a20a896bb7f85ea42d1378ea6925566a1ddfb715928d016ad3fe70e/download",
     [1537690962] = "https://api.jnkie.com/api/v1/luascripts/public/356b91d2f130f0d93b4bf50e5d3c9f611a6b210ce97f97317a2c7213c1a25431/download",
     [127794225497302] = "https://api.jnkie.com/api/v1/luascripts/public/16c8fd26bd86602187a839bb4c4f521723686c5fc3aa5dc91ecf9f6e7608318e/download",
+    [131623223084840] = "https://api.jnkie.com/api/v1/luascripts/public/a8c1deecb961e3727ddb8492cc60048c00e57052c01327c57a6cdec78ee7edfe/download",
 }
 
 local currentID = game.PlaceId
