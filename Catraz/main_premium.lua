@@ -15,6 +15,16 @@ local games = {
     [131623223084840] = { url = "https://api.jnkie.com/api/v1/luascripts/public/4e724e2ae3f026d58d1e495342d6d2b3862b4013cb9c9fcbb95befe3e5110bf3/download", key_required = true }, -- Escape Tsunami For Brainrots
     [137629155365661] = { url = "https://api.jnkie.com/api/v1/luascripts/public/4e724e2ae3f026d58d1e495342d6d2b3862b4013cb9c9fcbb95befe3e5110bf3/download", key_required = true }, -- Escape Tsunami For brainrots
     [86362492050446] = { url = "https://api.jnkie.com/api/v1/luascripts/public/4e724e2ae3f026d58d1e495342d6d2b3862b4013cb9c9fcbb95befe3e5110bf3/download", key_required = true }, -- Escape Tsunami For Brainrots
+    [16732694052] = { url = "https://api.jnkie.com/api/v1/luascripts/public/55609d9277db6383c906a1ac32126d7bdc51cfb143f3e7aa18534a9e3ca98b00/download", key_required = true }, -- Fisch
+    [85537329004957] = { url = "https://api.jnkie.com/api/v1/luascripts/public/55609d9277db6383c906a1ac32126d7bdc51cfb143f3e7aa18534a9e3ca98b00/download", key_required = true }, -- Fisch2
+    [112780263016678] = { url = "https://api.jnkie.com/api/v1/luascripts/public/55609d9277db6383c906a1ac32126d7bdc51cfb143f3e7aa18534a9e3ca98b00/download", key_required = true }, -- Fisch3
+    [70451556031302] = { url = "https://api.jnkie.com/api/v1/luascripts/public/55609d9277db6383c906a1ac32126d7bdc51cfb143f3e7aa18534a9e3ca98b00/download", key_required = true }, -- Fisch4
+    [131716211654599] = { url = "https://api.jnkie.com/api/v1/luascripts/public/55609d9277db6383c906a1ac32126d7bdc51cfb143f3e7aa18534a9e3ca98b00/download", key_required = true }, -- Fisch5
+    [106011698424775] = { url = "https://api.jnkie.com/api/v1/luascripts/public/55609d9277db6383c906a1ac32126d7bdc51cfb143f3e7aa18534a9e3ca98b00/download", key_required = true }, -- Fisch6
+    [105044186406168] = { url = "https://api.jnkie.com/api/v1/luascripts/public/55609d9277db6383c906a1ac32126d7bdc51cfb143f3e7aa18534a9e3ca98b00/download", key_required = true }, -- Fisch7
+    [72907489978215] = { url = "https://api.jnkie.com/api/v1/luascripts/public/55609d9277db6383c906a1ac32126d7bdc51cfb143f3e7aa18534a9e3ca98b00/download", key_required = true }, -- Fisch8
+    [99519129453387] = { url = "https://api.jnkie.com/api/v1/luascripts/public/55609d9277db6383c906a1ac32126d7bdc51cfb143f3e7aa18534a9e3ca98b00/download", key_required = true }, -- Fisch9
+    [17800150007] = { url = "https://api.jnkie.com/api/v1/luascripts/public/55609d9277db6383c906a1ac32126d7bdc51cfb143f3e7aa18534a9e3ca98b00/download", key_required = true }, -- Fisch10
 }
 
 local currentID = game.PlaceId
