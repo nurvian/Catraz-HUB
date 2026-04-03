@@ -25,6 +25,7 @@ local games = {
     [72907489978215] = { url = "https://api.jnkie.com/api/v1/luascripts/public/55609d9277db6383c906a1ac32126d7bdc51cfb143f3e7aa18534a9e3ca98b00/download", key_required = true }, -- Fisch8
     [99519129453387] = { url = "https://api.jnkie.com/api/v1/luascripts/public/55609d9277db6383c906a1ac32126d7bdc51cfb143f3e7aa18534a9e3ca98b00/download", key_required = true }, -- Fisch9
     [17800150007] = { url = "https://api.jnkie.com/api/v1/luascripts/public/55609d9277db6383c906a1ac32126d7bdc51cfb143f3e7aa18534a9e3ca98b00/download", key_required = true }, -- Fisch10
+    [93978595733734] = { url = "https://api.jnkie.com/api/v1/luascripts/public/86ba5f16e8850cf8609acc4c3f9744452e1ea83f28f81974f6d60495cb91a6e9/download", key_required = true }, -- VD
 }
 
 local currentID = game.PlaceId
