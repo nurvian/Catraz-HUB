@@ -26,6 +26,13 @@ local games = {
     [99519129453387] = { url = "https://api.jnkie.com/api/v1/luascripts/public/55609d9277db6383c906a1ac32126d7bdc51cfb143f3e7aa18534a9e3ca98b00/download", key_required = true }, -- Fisch9
     [17800150007] = { url = "https://api.jnkie.com/api/v1/luascripts/public/55609d9277db6383c906a1ac32126d7bdc51cfb143f3e7aa18534a9e3ca98b00/download", key_required = true }, -- Fisch10
     [93978595733734] = { url = "https://api.jnkie.com/api/v1/luascripts/public/86ba5f16e8850cf8609acc4c3f9744452e1ea83f28f81974f6d60495cb91a6e9/download", key_required = true }, -- VD
+    [77747658251236] = { url = "https://api.jnkie.com/api/v1/luascripts/public/c85bab375d777b6307dbe8a1ae36d54b59ac74cc2d689acc1536ab7f1f4e64e2/download", key_required = true }, -- SP1
+    [72665108994429] = { url = "https://api.jnkie.com/api/v1/luascripts/public/c85bab375d777b6307dbe8a1ae36d54b59ac74cc2d689acc1536ab7f1f4e64e2/download", key_required = true }, -- SP2
+    [96767841099256] = { url = "https://api.jnkie.com/api/v1/luascripts/public/c85bab375d777b6307dbe8a1ae36d54b59ac74cc2d689acc1536ab7f1f4e64e2/download", key_required = true }, -- SP3
+    [123955125827131] = { url = "https://api.jnkie.com/api/v1/luascripts/public/c85bab375d777b6307dbe8a1ae36d54b59ac74cc2d689acc1536ab7f1f4e64e2/download", key_required = true }, -- SP4
+    [138368689293913] = { url = "https://api.jnkie.com/api/v1/luascripts/public/c85bab375d777b6307dbe8a1ae36d54b59ac74cc2d689acc1536ab7f1f4e64e2/download", key_required = true }, -- SP5
+    [99684056491472] = { url = "https://api.jnkie.com/api/v1/luascripts/public/c85bab375d777b6307dbe8a1ae36d54b59ac74cc2d689acc1536ab7f1f4e64e2/download", key_required = true }, -- SP6
+    [75159314259063] = { url = "https://api.jnkie.com/api/v1/luascripts/public/c85bab375d777b6307dbe8a1ae36d54b59ac74cc2d689acc1536ab7f1f4e64e2/download", key_required = true }, -- SP7
 }
 
 local currentID = game.PlaceId
