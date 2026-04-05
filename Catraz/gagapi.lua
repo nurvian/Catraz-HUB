@@ -1,8 +1,11 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local HttpService = game:GetService("HttpService")
 local RunService = game:GetService("RunService")
-local Workspace = game:GetService("Workspace") -- [BARU] Tambah Workspace
-local CoreGui = gethui and gethui() or game:GetService("CoreGui") or game.Players.LocalPlayer.PlayerGui
+local Workspace = game:GetService("Workspace")
+local VirtualUser = game:GetService("VirtualUser") -- [BARU] Service untuk Anti-AFK
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local CoreGui = gethui and gethui() or game:GetService("CoreGui") or LocalPlayer.PlayerGui
 
 -- ==========================================
 -- KONFIGURASI API CATRAZ HUB
@@ -24,6 +27,16 @@ if not success then
     warn("[Catraz Hub] Gagal memanggil DataService.")
     return
 end
+
+-- ==========================================
+-- FITUR ANTI-AFK (BYPASS IDLE 20 MENIT)
+-- ==========================================
+LocalPlayer.Idled:Connect(function()
+    VirtualUser:CaptureController()
+    VirtualUser:ClickButton2(Vector2.new())
+    print("[Catraz Hub] Anti-AFK aktif! Mencegah disconnect karena Idle.")
+end)
+print("[Catraz Hub] Sistem Anti-AFK berhasil dijalankan.")
 
 -- ==========================================
 -- MEMBUAT UI (MINI DASHBOARD)
