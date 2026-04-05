@@ -1,6 +1,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local HttpService = game:GetService("HttpService")
 local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace") -- [BARU] Tambah Workspace
 local CoreGui = gethui and gethui() or game:GetService("CoreGui") or game.Players.LocalPlayer.PlayerGui
 
 -- ==========================================
@@ -38,8 +39,8 @@ ScreenGui.ResetOnSpawn = false
 ScreenGui.Parent = CoreGui
 
 local MainFrame = Instance.new("Frame")
-MainFrame.Size = UDim2.new(0, 250, 0, 110)
-MainFrame.Position = UDim2.new(1, -270, 1, -130) -- Pojok Kanan Bawah
+MainFrame.Size = UDim2.new(0, 250, 0, 130) -- [UPDATE] Tinggi ditambah dari 110 ke 130
+MainFrame.Position = UDim2.new(1, -270, 1, -150) -- [UPDATE] Naik sedikit biar nggak nabrak bawah
 MainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
 MainFrame.BorderSizePixel = 0
 MainFrame.Parent = ScreenGui
@@ -90,11 +91,23 @@ LastSyncLabel.TextSize = 12
 LastSyncLabel.TextXAlignment = Enum.TextXAlignment.Left
 LastSyncLabel.Parent = MainFrame
 
+-- [BARU] Label Cuaca
+local WeatherLabel = Instance.new("TextLabel")
+WeatherLabel.Size = UDim2.new(1, -20, 0, 20)
+WeatherLabel.Position = UDim2.new(0, 10, 0, 95)
+WeatherLabel.BackgroundTransparency = 1
+WeatherLabel.Text = "Weather: Checking..."
+WeatherLabel.TextColor3 = Color3.fromRGB(100, 200, 255)
+WeatherLabel.Font = Enum.Font.GothamBold
+WeatherLabel.TextSize = 12
+WeatherLabel.TextXAlignment = Enum.TextXAlignment.Left
+WeatherLabel.Parent = MainFrame
+
 -- ==========================================
 -- LOGIC & UPDATE DATA
 -- ==========================================
 local startTime = os.time()
-local lastSentStock = nil
+local lastSentPayload = nil -- [UPDATE] Ganti nama biar lebih pas karena sekarang bawa payload utuh
 
 -- Fungsi untuk update Runtime UI
 task.spawn(function()
@@ -121,8 +134,33 @@ local function isDataChanged(t1, t2)
     return false
 end
 
+-- [BARU] Fungsi Pembaca Cuaca
+local function getCurrentWeather()
+    local weatherStr = Workspace:GetAttribute("CurrentWeatherEvents")
+    local isRaining = Workspace:GetAttribute("RainEvent")
+    
+    local activeWeather = "Clear"
+    
+    if type(weatherStr) == "string" and weatherStr ~= "[]" then
+        local suc, decoded = pcall(function() return HttpService:JSONDecode(weatherStr) end)
+        if suc and type(decoded) == "table" and #decoded > 0 then
+            activeWeather = table.concat(decoded, ", ")
+        end
+    end
+    
+    if isRaining and not string.find(activeWeather, "Rain") and not string.find(activeWeather, "Storm") then
+        activeWeather = activeWeather .. " (Raining)"
+    end
+    
+    return activeWeather
+end
+
 -- Fungsi utama untuk ngambil & ngirim stock
 local function processStockSync()
+    -- [UPDATE] Update UI Weather duluan
+    local currentWeather = getCurrentWeather()
+    WeatherLabel.Text = "Weather: " .. currentWeather
+
     local playerData = DataService:GetData()
     if not playerData then return end
 
@@ -169,9 +207,15 @@ local function processStockSync()
         for k, v in pairs(playerData.GardenCoinShopStock.Stocks) do currentStock["Garden_Coins"][k] = v.Stock end
     end
 
+    -- [UPDATE] Gabungkan Cuaca dan Stock jadi satu Payload JSON
+    local currentPayload = {
+        weather = currentWeather,
+        stocks = currentStock
+    }
+
     -- Cek apakah ada perubahan dari pengiriman sebelumnya
-    if lastSentStock and not isDataChanged(currentStock, lastSentStock) then
-        StatusLabel.Text = "Status: Idle (No stock changes)"
+    if lastSentPayload and not isDataChanged(currentPayload, lastSentPayload) then
+        StatusLabel.Text = "Status: Idle (No changes)"
         StatusLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
         return -- STOP DI SINI, JANGAN KIRIM KE API
     end
@@ -180,7 +224,7 @@ local function processStockSync()
     StatusLabel.Text = "Status: Syncing to API..."
     StatusLabel.TextColor3 = Color3.fromRGB(255, 200, 0)
     
-    local jsonPayload = HttpService:JSONEncode(currentStock)
+    local jsonPayload = HttpService:JSONEncode(currentPayload)
 
     local response = httpRequest({
         Url = API_URL,
@@ -191,7 +235,7 @@ local function processStockSync()
 
     if response.StatusCode == 200 then
         -- Simpan data ini sebagai acuan perbandingan berikutnya
-        lastSentStock = currentStock
+        lastSentPayload = currentPayload
         
         LastSyncLabel.Text = "Last Sync: " .. os.date("%X")
         StatusLabel.Text = "Status: Active & Synced"
