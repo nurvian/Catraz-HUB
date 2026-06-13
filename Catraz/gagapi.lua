@@ -1,270 +1,309 @@
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local HttpService = game:GetService("HttpService")
-local RunService = game:GetService("RunService")
-local Workspace = game:GetService("Workspace")
-local VirtualUser = game:GetService("VirtualUser") -- [BARU] Service untuk Anti-AFK
+-- StockReader_Realtime.lua
+-- Loop terus, kirim ke backend HANYA kalau ada perubahan stock
+-- Jalankan via Delta / Solara / Executor lainnya
+
 local Players = game:GetService("Players")
-local LocalPlayer = Players.LocalPlayer
-local CoreGui = gethui and gethui() or game:GetService("CoreGui") or LocalPlayer.PlayerGui
+local lp = Players.LocalPlayer
+local PlayerGui = lp:WaitForChild("PlayerGui")
+local HttpService = game:GetService("HttpService")
 
--- ==========================================
--- KONFIGURASI API CATRAZ HUB
--- ==========================================
-local API_URL = "http://bot-service-asia-se-02.cybrancee.com:5023/gag/update"
-local CHECK_INTERVAL = 5 -- Cek data setiap 5 detik (API cuma dipanggil kalau data beda)
+-- ============================================================
+-- CONFIG
+-- ============================================================
 
-local httpRequest = (syn and syn.request) or (http and http.request) or http_request or request
-if not httpRequest then
-    warn("[Catraz Hub] Eksekutor kamu tidak mendukung fungsi HTTP Request!")
-    return
+local CONFIG = {
+    API_URL          = "http://194.233.73.70:5050/api/stock",
+    API_KEY          = "3ISQ6vScn3dczkNY",
+    SEND_TO_BACKEND  = true,
+
+    -- Interval cek perubahan (detik)
+    -- 3 detik = cukup responsif tanpa spam request
+    CHECK_INTERVAL   = 3,
+
+    -- Kalau mau debug: print setiap loop walau tidak ada perubahan
+    DEBUG_LOG        = false,
+}
+
+-- ============================================================
+-- DEFINISI SHOP
+-- ============================================================
+
+local SHOPS = {
+    { name = "SeedShop_Normal",    path = {"SeedShop", "Frame", "NormalShop"}    },
+    { name = "SeedShop_Exclusive", path = {"SeedShop", "Frame", "ExclusiveShop"} },
+    { name = "GearShop",           path = {"GearShop",  "Frame", "ScrollingFrame"} },
+    { name = "CrateShop",          path = {"CrateShop", "Frame", "ScrollingFrame"} },
+}
+
+-- ============================================================
+-- HELPER: Parse stock & cost
+-- ============================================================
+
+local function parseStock(stockText)
+    if stockText == nil then return 0 end
+    local t = stockText:lower()
+    if t:find("not owned") then return "not_owned" end
+    if t:find("^owned")    then return "owned" end
+    if t:find("equipped")  then return t:find("unequipped") and "unequipped" or "equipped" end
+    if t:find("no stock")  then return 0 end
+    local n = stockText:match("x(%d+)")
+    if n then return tonumber(n) end
+    return 0
 end
 
-local success, DataService = pcall(function()
-    return require(ReplicatedStorage.Modules.DataService)
-end)
-
-if not success then
-    warn("[Catraz Hub] Gagal memanggil DataService.")
-    return
+local function parseCost(costText)
+    if costText == nil or costText == "N/A" or costText == "NO STOCK" then return nil end
+    local clean = costText:gsub("¢",""):gsub(",",""):gsub("%s","")
+    local num, suffix = clean:match("^([%d%.]+)([KkMmBb]?)$")
+    if not num then return nil end
+    num = tonumber(num)
+    if suffix == "K" or suffix == "k" then num = num * 1000
+    elseif suffix == "M" or suffix == "m" then num = num * 1000000
+    elseif suffix == "B" or suffix == "b" then num = num * 1000000000
+    end
+    return num
 end
 
--- ==========================================
--- FITUR ANTI-AFK (BYPASS IDLE 20 MENIT)
--- ==========================================
-LocalPlayer.Idled:Connect(function()
-    VirtualUser:CaptureController()
-    VirtualUser:ClickButton2(Vector2.new())
-    print("[Catraz Hub] Anti-AFK aktif! Mencegah disconnect karena Idle.")
-end)
-print("[Catraz Hub] Sistem Anti-AFK berhasil dijalankan.")
+-- ============================================================
+-- BACA SATU SCROLLINGFRAME
+-- ============================================================
 
--- ==========================================
--- MEMBUAT UI (MINI DASHBOARD)
--- ==========================================
--- Hapus UI lama kalau ada (biar nggak numpuk kalau di-execute berkali-kali)
-if CoreGui:FindFirstChild("CatrazStockSyncUI") then
-    CoreGui.CatrazStockSyncUI:Destroy()
-end
+local function readScrollingFrame(sf)
+    local items = {}
+    for _, item in ipairs(sf:GetChildren()) do
+        if (item:IsA("Frame") or item:IsA("ImageButton") or item:IsA("TextButton")) and item.Visible then
+            local seedText  = item:FindFirstChild("Seed_Text",  true)
+            local costText  = item:FindFirstChild("Cost_Text",  true)
+            local stockText = item:FindFirstChild("Stock_Text", true)
 
-local ScreenGui = Instance.new("ScreenGui")
-ScreenGui.Name = "CatrazStockSyncUI"
-ScreenGui.ResetOnSpawn = false
-ScreenGui.Parent = CoreGui
+            if seedText or costText then
+                local name     = seedText and seedText.Text or item.Name
+                local costRaw  = costText  and costText.Text  or "N/A"
+                local stockRaw = stockText and stockText.Text or "N/A"
 
-local MainFrame = Instance.new("Frame")
-MainFrame.Size = UDim2.new(0, 250, 0, 130) -- [UPDATE] Tinggi ditambah dari 110 ke 130
-MainFrame.Position = UDim2.new(1, -270, 1, -150) -- [UPDATE] Naik sedikit biar nggak nabrak bawah
-MainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-MainFrame.BorderSizePixel = 0
-MainFrame.Parent = ScreenGui
-
-local UICorner = Instance.new("UICorner")
-UICorner.CornerRadius = UDim.new(0, 8)
-UICorner.Parent = MainFrame
-
-local TitleLabel = Instance.new("TextLabel")
-TitleLabel.Size = UDim2.new(1, 0, 0, 30)
-TitleLabel.BackgroundTransparency = 1
-TitleLabel.Text = "🐱 Catraz Hub - Stock Sync"
-TitleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-TitleLabel.Font = Enum.Font.GothamBold
-TitleLabel.TextSize = 14
-TitleLabel.Parent = MainFrame
-
-local StatusLabel = Instance.new("TextLabel")
-StatusLabel.Size = UDim2.new(1, -20, 0, 20)
-StatusLabel.Position = UDim2.new(0, 10, 0, 35)
-StatusLabel.BackgroundTransparency = 1
-StatusLabel.Text = "Status: Waiting for data..."
-StatusLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-StatusLabel.Font = Enum.Font.Gotham
-StatusLabel.TextSize = 12
-StatusLabel.TextXAlignment = Enum.TextXAlignment.Left
-StatusLabel.Parent = MainFrame
-
-local RuntimeLabel = Instance.new("TextLabel")
-RuntimeLabel.Size = UDim2.new(1, -20, 0, 20)
-RuntimeLabel.Position = UDim2.new(0, 10, 0, 55)
-RuntimeLabel.BackgroundTransparency = 1
-RuntimeLabel.Text = "Runtime: 00:00:00"
-RuntimeLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-RuntimeLabel.Font = Enum.Font.Gotham
-RuntimeLabel.TextSize = 12
-RuntimeLabel.TextXAlignment = Enum.TextXAlignment.Left
-RuntimeLabel.Parent = MainFrame
-
-local LastSyncLabel = Instance.new("TextLabel")
-LastSyncLabel.Size = UDim2.new(1, -20, 0, 20)
-LastSyncLabel.Position = UDim2.new(0, 10, 0, 75)
-LastSyncLabel.BackgroundTransparency = 1
-LastSyncLabel.Text = "Last Sync: Never"
-LastSyncLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-LastSyncLabel.Font = Enum.Font.Gotham
-LastSyncLabel.TextSize = 12
-LastSyncLabel.TextXAlignment = Enum.TextXAlignment.Left
-LastSyncLabel.Parent = MainFrame
-
--- [BARU] Label Cuaca
-local WeatherLabel = Instance.new("TextLabel")
-WeatherLabel.Size = UDim2.new(1, -20, 0, 20)
-WeatherLabel.Position = UDim2.new(0, 10, 0, 95)
-WeatherLabel.BackgroundTransparency = 1
-WeatherLabel.Text = "Weather: Checking..."
-WeatherLabel.TextColor3 = Color3.fromRGB(100, 200, 255)
-WeatherLabel.Font = Enum.Font.GothamBold
-WeatherLabel.TextSize = 12
-WeatherLabel.TextXAlignment = Enum.TextXAlignment.Left
-WeatherLabel.Parent = MainFrame
-
--- ==========================================
--- LOGIC & UPDATE DATA
--- ==========================================
-local startTime = os.time()
-local lastSentPayload = nil -- [UPDATE] Ganti nama biar lebih pas karena sekarang bawa payload utuh
-
--- Fungsi untuk update Runtime UI
-task.spawn(function()
-    while task.wait(1) do
-        local diff = os.difftime(os.time(), startTime)
-        local h = math.floor(diff / 3600)
-        local m = math.floor((diff % 3600) / 60)
-        local s = diff % 60
-        RuntimeLabel.Text = string.format("Runtime: %02d:%02d:%02d", h, m, s)
-    end
-end)
-
--- Fungsi untuk ngecek apakah ada perubahan data (Deep Compare)
-local function isDataChanged(t1, t2)
-    if t1 == t2 then return false end
-    if type(t1) ~= "table" or type(t2) ~= "table" then return true end
-    
-    for k, v in pairs(t1) do
-        if isDataChanged(v, t2[k]) then return true end
-    end
-    for k, v in pairs(t2) do
-        if t1[k] == nil then return true end
-    end
-    return false
-end
-
--- [BARU] Fungsi Pembaca Cuaca
-local function getCurrentWeather()
-    local weatherStr = Workspace:GetAttribute("CurrentWeatherEvents")
-    local isRaining = Workspace:GetAttribute("RainEvent")
-    
-    local activeWeather = "Clear"
-    
-    if type(weatherStr) == "string" and weatherStr ~= "[]" then
-        local suc, decoded = pcall(function() return HttpService:JSONDecode(weatherStr) end)
-        if suc and type(decoded) == "table" and #decoded > 0 then
-            activeWeather = table.concat(decoded, ", ")
-        end
-    end
-    
-    if isRaining and not string.find(activeWeather, "Rain") and not string.find(activeWeather, "Storm") then
-        activeWeather = activeWeather .. " (Raining)"
-    end
-    
-    return activeWeather
-end
-
--- Fungsi utama untuk ngambil & ngirim stock
-local function processStockSync()
-    -- [UPDATE] Update UI Weather duluan
-    local currentWeather = getCurrentWeather()
-    WeatherLabel.Text = "Weather: " .. currentWeather
-
-    local playerData = DataService:GetData()
-    if not playerData then return end
-
-    local currentStock = {
-        ["Shop"] = {},
-        ["Daily_Deals"] = {},
-        ["Gears"] = {},
-        ["Eggs"] = {},
-        ["Garden_Coins"] = {}
-    }
-
-    -- 1. Shop
-    if playerData.SeedStocks and playerData.SeedStocks.Shop and playerData.SeedStocks.Shop.Stocks then
-        for k, v in pairs(playerData.SeedStocks.Shop.Stocks) do currentStock["Shop"][k] = v.Stock end
-    end
-    -- 2. Daily Deals
-    if playerData.SeedStocks and playerData.SeedStocks["Daily Deals"] and playerData.SeedStocks["Daily Deals"].Stocks then
-        for k, v in pairs(playerData.SeedStocks["Daily Deals"].Stocks) do currentStock["Daily_Deals"][k] = v.Stock end
-    end
-    -- 3. Event Shop (Dinamis)
-    if playerData.EventShopStock then
-        for shopName, shopData in pairs(playerData.EventShopStock) do
-            if type(shopData) == "table" and shopData.Stocks then
-                local safeShopName = string.gsub(shopName, " ", "_")
-                if safeShopName ~= "" then
-                    currentStock[safeShopName] = {}
-                    for k, v in pairs(shopData.Stocks) do currentStock[safeShopName][k] = v.Stock end
+                if name ~= "" and name ~= "Seed_Text" then
+                    table.insert(items, {
+                        name     = name,
+                        cost_raw = costRaw,
+                        cost     = parseCost(costRaw),
+                        stock    = parseStock(stockRaw),
+                        in_stock = parseStock(stockRaw) ~= 0,
+                    })
                 end
             end
         end
     end
-    -- 4. Gears
-    if playerData.GearStock and playerData.GearStock.Stocks then
-        for k, v in pairs(playerData.GearStock.Stocks) do currentStock["Gears"][k] = v.Stock end
-    end
-    -- 5. Eggs
-    if playerData.PetEggStock and playerData.PetEggStock.Stocks then
-        for _, v in pairs(playerData.PetEggStock.Stocks) do
-            if v.EggName and v.Stock then currentStock["Eggs"][v.EggName] = v.Stock end
+    return items
+end
+
+-- ============================================================
+-- BACA SEMUA SHOP → return table allShops
+-- ============================================================
+
+local function readAllShops()
+    local allShops = {}
+    for _, shopDef in ipairs(SHOPS) do
+        local current = PlayerGui
+        local ok = true
+        for _, step in ipairs(shopDef.path) do
+            local next = current:FindFirstChild(step) or current:FindFirstChild(step, true)
+            if not next then ok = false break end
+            current = next
+        end
+
+        if ok and (current:IsA("ScrollingFrame") or current:IsA("Frame")) then
+            allShops[shopDef.name] = readScrollingFrame(current)
+        else
+            allShops[shopDef.name] = {}
         end
     end
-    -- 6. Garden Coins
-    if playerData.GardenCoinShopStock and playerData.GardenCoinShopStock.Stocks then
-        for k, v in pairs(playerData.GardenCoinShopStock.Stocks) do currentStock["Garden_Coins"][k] = v.Stock end
-    end
+    return allShops
+end
 
-    -- [UPDATE] Gabungkan Cuaca dan Stock jadi satu Payload JSON
-    local currentPayload = {
-        weather = currentWeather,
-        stocks = currentStock
+-- ============================================================
+-- DIFF: Bandingkan dua snapshot
+-- Kembalikan true kalau ada yang berubah
+-- ============================================================
+
+local function snapshotKey(shopName, item)
+    -- Key unik per item: "ShopName|ItemName"
+    return shopName .. "|" .. tostring(item.name)
+end
+
+local function buildSnapshotMap(allShops)
+    -- Flatten semua item jadi map: key → {stock, cost}
+    local map = {}
+    for shopName, items in pairs(allShops) do
+        for _, item in ipairs(items) do
+            local key = snapshotKey(shopName, item)
+            map[key] = {
+                stock    = tostring(item.stock),
+                cost_raw = item.cost_raw,
+                in_stock = item.in_stock,
+            }
+        end
+    end
+    return map
+end
+
+local function hasChanged(oldMap, newMap)
+    -- Cek item baru / berubah
+    for key, newVal in pairs(newMap) do
+        local oldVal = oldMap[key]
+        if not oldVal then
+            return true, ("Item baru: %s"):format(key)
+        end
+        if oldVal.stock ~= newVal.stock then
+            return true, ("Stock berubah [%s]: %s → %s"):format(key, oldVal.stock, newVal.stock)
+        end
+        if oldVal.cost_raw ~= newVal.cost_raw then
+            return true, ("Harga berubah [%s]: %s → %s"):format(key, oldVal.cost_raw, newVal.cost_raw)
+        end
+    end
+    -- Cek item yang hilang
+    for key in pairs(oldMap) do
+        if not newMap[key] then
+            return true, ("Item hilang: %s"):format(key)
+        end
+    end
+    return false, nil
+end
+
+-- ============================================================
+-- KIRIM KE BACKEND
+-- ============================================================
+
+local function sendToBackend(allShops)
+    local payload = {
+        timestamp = os.time(),
+        player    = lp.Name,
+        shops     = allShops,
     }
 
-    -- Cek apakah ada perubahan dari pengiriman sebelumnya
-    if lastSentPayload and not isDataChanged(currentPayload, lastSentPayload) then
-        StatusLabel.Text = "Status: Idle (No changes)"
-        StatusLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
-        return -- STOP DI SINI, JANGAN KIRIM KE API
+    local ok, jsonStr = pcall(function()
+        return HttpService:JSONEncode(payload)
+    end)
+
+    if not ok then
+        print("❌ Gagal encode JSON:", jsonStr)
+        return false
     end
 
-    -- Kalau data beda (ada update baru), siapkan pengiriman
-    StatusLabel.Text = "Status: Syncing to API..."
-    StatusLabel.TextColor3 = Color3.fromRGB(255, 200, 0)
-    
-    local jsonPayload = HttpService:JSONEncode(currentPayload)
+    -- Coba pakai request() bawaan executor
+    local sendOk, result = pcall(function()
+        return request({
+            Url     = CONFIG.API_URL,
+            Method  = "POST",
+            Headers = {
+                ["Content-Type"] = "application/json",
+                ["x-api-key"]    = CONFIG.API_KEY,
+            },
+            Body = jsonStr,
+        })
+    end)
 
-    local response = httpRequest({
-        Url = API_URL,
-        Method = "POST",
-        Headers = { ["Content-Type"] = "application/json" },
-        Body = jsonPayload
-    })
+    if sendOk and result then
+        if result.StatusCode == 200 then
+            print(("✅ Dikirim! %d shop, response: %s"):format(
+                #SHOPS, tostring(result.Body):sub(1, 80)
+            ))
+            return true
+        else
+            print(("⚠️ Server error %d: %s"):format(result.StatusCode, tostring(result.Body):sub(1, 80)))
+            return false
+        end
+    end
 
-    if response.StatusCode == 200 then
-        -- Simpan data ini sebagai acuan perbandingan berikutnya
-        lastSentPayload = currentPayload
-        
-        LastSyncLabel.Text = "Last Sync: " .. os.date("%X")
-        StatusLabel.Text = "Status: Active & Synced"
-        StatusLabel.TextColor3 = Color3.fromRGB(0, 255, 100)
-    else
-        StatusLabel.Text = "Status: API Error (" .. tostring(response.StatusCode) .. ")"
-        StatusLabel.TextColor3 = Color3.fromRGB(255, 50, 50)
+    -- Fallback: syn.request (executor lama)
+    local fallOk, fallResult = pcall(function()
+        return syn.request({
+            Url     = CONFIG.API_URL,
+            Method  = "POST",
+            Headers = {
+                ["Content-Type"] = "application/json",
+                ["x-api-key"]    = CONFIG.API_KEY,
+            },
+            Body = jsonStr,
+        })
+    end)
+
+    if fallOk and fallResult then
+        if fallResult.StatusCode == 200 then
+            print("✅ Dikirim (fallback)!")
+            return true
+        end
+    end
+
+    print("❌ Gagal kirim. Check koneksi / URL backend.")
+    return false
+end
+
+-- ============================================================
+-- MAIN LOOP
+-- ============================================================
+
+print("\n" .. string.rep("=", 50))
+print("  STOCK TRACKER REAL-TIME")
+print("  Interval cek: " .. CONFIG.CHECK_INTERVAL .. " detik")
+print(string.rep("=", 50) .. "\n")
+
+-- Snapshot pertama (belum ada data lama)
+local lastSnapshotMap = {}
+local cycleCount = 0
+local sentCount   = 0
+
+-- Kirim sekali di awal supaya backend langsung punya data
+do
+    print("[Init] Baca stock pertama kali...")
+    local initialShops = readAllShops()
+    lastSnapshotMap = buildSnapshotMap(initialShops)
+
+    local totalItems = 0
+    for _, items in pairs(initialShops) do totalItems = totalItems + #items end
+    print(("[Init] Ditemukan %d item. Kirim data awal..."):format(totalItems))
+
+    if CONFIG.SEND_TO_BACKEND then
+        sendToBackend(initialShops)
+        sentCount = sentCount + 1
     end
 end
 
--- ==========================================
--- JALANKAN SCRIPT (LOOP)
--- ==========================================
-task.spawn(function()
-    while true do
-        processStockSync()
-        task.wait(CHECK_INTERVAL)
+-- Loop utama
+while true do
+    task.wait(CONFIG.CHECK_INTERVAL)
+    cycleCount = cycleCount + 1
+
+    local currentShops = readAllShops()
+    local currentMap   = buildSnapshotMap(currentShops)
+
+    local changed, reason = hasChanged(lastSnapshotMap, currentMap)
+
+    if changed then
+        -- Hitung total item
+        local totalItems = 0
+        for _, items in pairs(currentShops) do totalItems = totalItems + #items end
+
+        local time = os.date("%H:%M:%S")
+        print(("\n[%s] 🔄 Perubahan terdeteksi: %s"):format(time, reason))
+        print(("[%s] Total item: %d — mengirim ke backend..."):format(time, totalItems))
+
+        if CONFIG.SEND_TO_BACKEND then
+            local ok = sendToBackend(currentShops)
+            if ok then
+                sentCount = sentCount + 1
+                lastSnapshotMap = currentMap  -- update snapshot hanya kalau berhasil kirim
+            end
+        else
+            -- Kalau SEND_TO_BACKEND false, tetap update snapshot + print JSON
+            lastSnapshotMap = currentMap
+            local _, jsonStr = pcall(function() return HttpService:JSONEncode({
+                timestamp = os.time(), player = lp.Name, shops = currentShops
+            }) end)
+            print("JSON:", jsonStr)
+        end
+    else
+        if CONFIG.DEBUG_LOG then
+            print(("[Cycle %d] Tidak ada perubahan"):format(cycleCount))
+        end
     end
-end)
+end
