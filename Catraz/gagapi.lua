@@ -111,7 +111,7 @@ local function readScrollingFrame(sf)
                         cost_raw = costRaw,
                         cost     = parseCost(costRaw),
                         stock    = parseStock(stockRaw),
-                        in_stock = parseStock(stockRaw) ~= 0,
+                        in_stock = stockVal ~= 0 and stockVal ~= "not_owned",
                     })
                 end
             end
