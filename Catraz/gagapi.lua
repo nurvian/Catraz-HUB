@@ -1,23 +1,24 @@
--- StockReader_Realtime.lua (+ Weather Detector)
+-- StockReader_Realtime.lua (+ Weather Detector + Phase Countdown)
 -- Loop terus, kirim ke backend HANYA kalau ada perubahan stock ATAU weather
 -- Jalankan via Delta / Solara / Executor lainnya
 
-local Players   = game:GetService("Players")
-local lp        = Players.LocalPlayer
-local PlayerGui = lp:WaitForChild("PlayerGui")
+local Players     = game:GetService("Players")
+local lp          = Players.LocalPlayer
+local PlayerGui   = lp:WaitForChild("PlayerGui")
 local HttpService = game:GetService("HttpService")
-local Workspace = game:GetService("Workspace")
+local Workspace   = game:GetService("Workspace")
+local RS          = game:GetService("ReplicatedStorage")
 
 -- ============================================================
 -- CONFIG
 -- ============================================================
 
 local CONFIG = {
-    API_URL        = "http://194.233.73.70:5050/api/stock",
-    API_KEY        = "3ISQ6vScn3dczkNY",
+    API_URL         = "http://194.233.73.70:5050/api/stock",
+    API_KEY         = "3ISQ6vScn3dczkNY",
     SEND_TO_BACKEND = true,
-    CHECK_INTERVAL = 3,
-    DEBUG_LOG      = false,
+    CHECK_INTERVAL  = 3,
+    DEBUG_LOG       = false,  -- true = spam console tiap cycle, false = hanya perubahan
 }
 
 -- ============================================================
@@ -32,21 +33,64 @@ local SHOPS = {
 }
 
 -- ============================================================
--- WEATHER: Baca dari Workspace Attributes
+-- WEATHER: Baca dari ReplicatedStorage.WeatherValues
+-- PhaseDuration = Unix timestamp kapan phase berikutnya mulai
 -- ============================================================
 
+local WeatherValues = RS:WaitForChild("WeatherValues", 10)
+local WEATHER_NAMES = {"Rain", "Lightning", "Rainbow", "Snowfall", "Starfall"}
+
 local function getWeatherData()
+    local now         = DateTime.now().UnixTimestamp
+    local activeWeather = "None"
+    local weatherEnd  = 0
+
+    -- Cek WeatherValues attributes (Rain/Lightning tidak punya folder, pakai attribute)
+    if WeatherValues then
+        for _, name in ipairs(WEATHER_NAMES) do
+            local playing = WeatherValues:GetAttribute(name .. "_Playing")
+            if playing == true then
+                activeWeather = name
+                weatherEnd    = WeatherValues:GetAttribute(name .. "_EndTime") or 0
+                break
+            end
+        end
+
+        -- Fallback: cek folder children (Rainbow/Snowfall/Starfall pakai BoolValue)
+        if activeWeather == "None" then
+            for _, folder in ipairs(WeatherValues:GetChildren()) do
+                local bv = folder:FindFirstChild("Playing")
+                local nv = folder:FindFirstChild("EndTime")
+                if bv and bv:IsA("BoolValue") and bv.Value == true then
+                    activeWeather = folder.Name
+                    weatherEnd    = nv and nv.Value or 0
+                    break
+                end
+            end
+        end
+    end
+
+    -- Phase & next phase countdown dari Workspace
+    local phase         = Workspace:GetAttribute("ActivePhase")    or "Unknown"
+    local phaseDuration = Workspace:GetAttribute("PhaseDuration")  or 0
+    -- PhaseDuration adalah Unix timestamp kapan phase berikutnya mulai
+    local phaseRemaining = math.max(0, math.floor(phaseDuration - now))
+
     return {
-        ActiveWeather = Workspace:GetAttribute("ActiveWeather") or "Unknown",
-        ActivePhase   = Workspace:GetAttribute("ActivePhase")   or "Unknown",
-        CycleOffset   = Workspace:GetAttribute("CycleOffset")   or 0,
+        ActiveWeather    = activeWeather,
+        ActivePhase      = phase,
+        WeatherEndTime   = weatherEnd,
+        WeatherRemaining = math.max(0, weatherEnd - now),
+        PhaseEndTime     = math.floor(phaseDuration),
+        PhaseRemaining   = phaseRemaining,
     }
 end
 
-local lastWeather = getWeatherData()  -- snapshot awal
+local lastWeather = getWeatherData()
 
 local function checkWeatherChanged()
     local w = getWeatherData()
+    -- Trigger jika weather ATAU phase berubah
     if w.ActiveWeather ~= lastWeather.ActiveWeather
     or w.ActivePhase   ~= lastWeather.ActivePhase then
         local reason = ("Weather: %s→%s | Phase: %s→%s"):format(
@@ -66,10 +110,11 @@ end
 local function parseStock(stockText)
     if stockText == nil then return 0 end
     local t = stockText:lower()
-    if t:find("not owned") then return "not_owned" end
-    if t:find("^owned")    then return "owned" end
-    if t:find("equipped")  then return t:find("unequipped") and "unequipped" or "equipped" end
-    if t:find("no stock")  then return 0 end
+    if t:find("not owned")  then return "not_owned"  end
+    if t:find("^owned")     then return "owned"       end
+    if t:find("unequipped") then return "unequipped"  end
+    if t:find("equipped")   then return "equipped"    end
+    if t:find("no stock")   then return 0             end
     local n = stockText:match("x(%d+)")
     if n then return tonumber(n) end
     return 0
@@ -77,7 +122,7 @@ end
 
 local function parseCost(costText)
     if costText == nil or costText == "N/A" or costText == "NO STOCK" then return nil end
-    local clean = costText:gsub("¢",""):gsub(",",""):gsub("%s","")
+    local clean = costText:gsub("%¢",""):gsub(",",""):gsub("%s","")
     local num, suffix = clean:match("^([%d%.]+)([KkMmBb]?)$")
     if not num then return nil end
     num = tonumber(num)
@@ -90,6 +135,7 @@ end
 
 -- ============================================================
 -- BACA SATU SCROLLINGFRAME
+-- BUG FIX: stockVal → stockVal didefinisikan dari parseStock()
 -- ============================================================
 
 local function readScrollingFrame(sf)
@@ -106,11 +152,12 @@ local function readScrollingFrame(sf)
                 local stockRaw = stockText and stockText.Text or "N/A"
 
                 if name ~= "" and name ~= "Seed_Text" then
+                    local stockVal = parseStock(stockRaw)  -- FIX: dulu stockVal tidak didefinisikan
                     table.insert(items, {
                         name     = name,
                         cost_raw = costRaw,
                         cost     = parseCost(costRaw),
-                        stock    = parseStock(stockRaw),
+                        stock    = stockVal,
                         in_stock = stockVal ~= 0 and stockVal ~= "not_owned",
                     })
                 end
@@ -130,9 +177,9 @@ local function readAllShops()
         local current = PlayerGui
         local ok = true
         for _, step in ipairs(shopDef.path) do
-            local next = current:FindFirstChild(step) or current:FindFirstChild(step, true)
-            if not next then ok = false break end
-            current = next
+            local found = current:FindFirstChild(step) or current:FindFirstChild(step, true)
+            if not found then ok = false break end
+            current = found
         end
 
         if ok and (current:IsA("ScrollingFrame") or current:IsA("Frame")) then
@@ -189,41 +236,37 @@ local function hasChanged(oldMap, newMap)
 end
 
 -- ============================================================
--- KIRIM KE BACKEND (sekarang include weather)
+-- KIRIM KE BACKEND
 -- ============================================================
 
 local function sendToBackend(allShops, weather)
     local payload = {
         timestamp = os.time(),
         player    = lp.Name,
-        weather   = weather,   -- ← data weather ikut terkirim
+        weather   = weather,
         shops     = allShops,
     }
 
     local ok, jsonStr = pcall(function()
         return HttpService:JSONEncode(payload)
     end)
-
     if not ok then
         print("❌ Gagal encode JSON:", jsonStr)
         return false
     end
 
+    -- Primary: request()
     local sendOk, result = pcall(function()
         return request({
             Url     = CONFIG.API_URL,
             Method  = "POST",
-            Headers = {
-                ["Content-Type"] = "application/json",
-                ["x-api-key"]    = CONFIG.API_KEY,
-            },
-            Body = jsonStr,
+            Headers = { ["Content-Type"] = "application/json", ["x-api-key"] = CONFIG.API_KEY },
+            Body    = jsonStr,
         })
     end)
-
     if sendOk and result then
         if result.StatusCode == 200 then
-            print(("✅ Dikirim! Response: %s"):format(tostring(result.Body):sub(1, 80)))
+            print(("✅ Dikirim! %s"):format(tostring(result.Body):sub(1, 80)))
             return true
         else
             print(("⚠️ Server error %d: %s"):format(result.StatusCode, tostring(result.Body):sub(1, 80)))
@@ -236,14 +279,10 @@ local function sendToBackend(allShops, weather)
         return syn.request({
             Url     = CONFIG.API_URL,
             Method  = "POST",
-            Headers = {
-                ["Content-Type"] = "application/json",
-                ["x-api-key"]    = CONFIG.API_KEY,
-            },
-            Body = jsonStr,
+            Headers = { ["Content-Type"] = "application/json", ["x-api-key"] = CONFIG.API_KEY },
+            Body    = jsonStr,
         })
     end)
-
     if fallOk and fallResult and fallResult.StatusCode == 200 then
         print("✅ Dikirim (fallback)!")
         return true
@@ -262,7 +301,6 @@ print("  STOCK + WEATHER TRACKER REAL-TIME")
 print("  Interval cek: " .. CONFIG.CHECK_INTERVAL .. " detik")
 print(string.rep("=", 50) .. "\n")
 
--- Init snapshot pertama
 local lastSnapshotMap = {}
 local cycleCount = 0
 local sentCount  = 0
@@ -276,9 +314,18 @@ do
 
     local totalItems = 0
     for _, items in pairs(initialShops) do totalItems = totalItems + #items end
-    print(("[Init] %d item ditemukan. Weather: %s / %s"):format(
-        totalItems, initialWeather.ActiveWeather, initialWeather.ActivePhase
+
+    local now = DateTime.now().UnixTimestamp
+    print(("[Init] %d item | Weather: %s | Phase: %s | Phase ganti dalam: %ds"):format(
+        totalItems,
+        initialWeather.ActiveWeather,
+        initialWeather.ActivePhase,
+        initialWeather.PhaseRemaining
     ))
+    if initialWeather.ActiveWeather ~= "None" then
+        print(("[Init] %s berakhir dalam: %ds"):format(
+            initialWeather.ActiveWeather, initialWeather.WeatherRemaining))
+    end
 
     if CONFIG.SEND_TO_BACKEND then
         sendToBackend(initialShops, initialWeather)
@@ -286,7 +333,6 @@ do
     end
 end
 
--- Loop utama
 while true do
     task.wait(CONFIG.CHECK_INTERVAL)
     cycleCount = cycleCount + 1
@@ -299,13 +345,16 @@ while true do
     local wChange,     wreason = checkWeatherChanged()
 
     if stockChange or wChange then
-        local time = os.date("%H:%M:%S")
-
-        if stockChange then
-            print(("[%s] 🔄 %s"):format(time, sreason))
-        end
-        if wChange then
-            print(("[%s] 🌤️ %s"):format(time, wreason))
+        local t = os.date("%H:%M:%S")
+        if stockChange then print(("[%s] 🔄 %s"):format(t, sreason)) end
+        if wChange     then
+            print(("[%s] 🌤️  %s"):format(t, wreason))
+            -- Tampilkan countdown weather baru jika aktif
+            if currentWeather.ActiveWeather ~= "None" then
+                print(("        ⏱️ Berakhir dalam: %ds (EndTime: %d)"):format(
+                    currentWeather.WeatherRemaining, currentWeather.WeatherEndTime))
+            end
+            print(("        🌅 Phase ganti dalam: %ds"):format(currentWeather.PhaseRemaining))
         end
 
         if CONFIG.SEND_TO_BACKEND then
@@ -328,7 +377,9 @@ while true do
         end
     else
         if CONFIG.DEBUG_LOG then
-            print(("[Cycle %d] Tidak ada perubahan"):format(cycleCount))
+            local w = currentWeather
+            print(("[Cycle %d] Tidak ada perubahan | Weather: %s | Phase selesai: %ds"):format(
+                cycleCount, w.ActiveWeather, w.PhaseRemaining))
         end
     end
 end
