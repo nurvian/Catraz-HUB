@@ -1,4 +1,4 @@
--- StockReader_Realtime.lua (+ Weather Detector + Phase Countdown)
+-- StockReader_Realtime.lua (+ Weather Detector + Phase Countdown) + Phase event fix
 -- Loop terus, kirim ke backend HANYA kalau ada perubahan stock ATAU weather
 -- Jalankan via Delta / Solara / Executor lainnya
 
@@ -68,6 +68,21 @@ local function getWeatherData()
                 end
             end
         end
+    end
+
+    -- Baca night event dari workspace ActiveWeather (Goldmoon/Bloodmoon/Rainbow Moon/dll)
+    -- Ini yang dipakai TimeCycleController, beda dari WeatherValues yang hanya Rain/dll
+    local NIGHT_EVENTS = {
+        ["Moon"]         = true,
+        ["Bloodmoon"]    = true,
+        ["Goldmoon"]     = true,
+        ["Rainbow Moon"] = true,
+        ["Chained Moon"] = true,
+        ["Pizza Moon"]   = true,
+    }
+    local wsWeather = Workspace:GetAttribute("ActiveWeather")
+    if activeWeather == "None" and wsWeather and NIGHT_EVENTS[wsWeather] then
+        activeWeather = wsWeather
     end
 
     -- Phase & next phase countdown dari Workspace
