@@ -1,4 +1,4 @@
--- StockReader_Realtime.lua (+ Weather Detector + Phase Countdown) + Phase event fix
+-- StockReader_Realtime.lua (+ Weather Detector + Phase Countdown)
 -- Loop terus, kirim ke backend HANYA kalau ada perubahan stock ATAU weather
 -- Jalankan via Delta / Solara / Executor lainnya
 
@@ -41,54 +41,49 @@ local WeatherValues = RS:WaitForChild("WeatherValues", 10)
 local WEATHER_NAMES = {"Rain", "Lightning", "Rainbow", "Snowfall", "Starfall"}
 
 local function getWeatherData()
-    local now         = DateTime.now().UnixTimestamp
+    local now = DateTime.now().UnixTimestamp
     local activeWeather = "None"
-    local weatherEnd  = 0
+    local weatherEnd = 0
+    local weatherEventName = "None"  -- ← tambah ini
 
-    -- Cek WeatherValues attributes (Rain/Lightning tidak punya folder, pakai attribute)
+    -- Cek WeatherValues (Rain/Lightning/Rainbow/dll)
     if WeatherValues then
         for _, name in ipairs(WEATHER_NAMES) do
             local playing = WeatherValues:GetAttribute(name .. "_Playing")
             if playing == true then
-                activeWeather = name
-                weatherEnd    = WeatherValues:GetAttribute(name .. "_EndTime") or 0
+                weatherEventName = name  -- simpan ke variable terpisah
+                weatherEnd = WeatherValues:GetAttribute(name .. "_EndTime") or 0
                 break
             end
         end
 
-        -- Fallback: cek folder children (Rainbow/Snowfall/Starfall pakai BoolValue)
-        if activeWeather == "None" then
+        if weatherEventName == "None" then
             for _, folder in ipairs(WeatherValues:GetChildren()) do
                 local bv = folder:FindFirstChild("Playing")
                 local nv = folder:FindFirstChild("EndTime")
                 if bv and bv:IsA("BoolValue") and bv.Value == true then
-                    activeWeather = folder.Name
-                    weatherEnd    = nv and nv.Value or 0
+                    weatherEventName = folder.Name
+                    weatherEnd = nv and nv.Value or 0
                     break
                 end
             end
         end
     end
 
-    -- Baca night event dari workspace ActiveWeather (Goldmoon/Bloodmoon/Rainbow Moon/dll)
-    -- Ini yang dipakai TimeCycleController, beda dari WeatherValues yang hanya Rain/dll
+    -- Night event dari Workspace
     local NIGHT_EVENTS = {
-        ["Moon"]         = true,
-        ["Bloodmoon"]    = true,
-        ["Goldmoon"]     = true,
-        ["Rainbow Moon"] = true,
-        ["Chained Moon"] = true,
-        ["Pizza Moon"]   = true,
+        ["Bloodmoon"] = true, ["Goldmoon"] = true,
+        ["Rainbow Moon"] = true, ["Chained Moon"] = true, ["Pizza Moon"] = true,
     }
     local wsWeather = Workspace:GetAttribute("ActiveWeather")
-    if activeWeather == "None" and wsWeather and NIGHT_EVENTS[wsWeather] then
-        activeWeather = wsWeather
+    if wsWeather and NIGHT_EVENTS[wsWeather] then
+        activeWeather = wsWeather  -- night event jadi ActiveWeather
+    elseif weatherEventName ~= "None" then
+        activeWeather = weatherEventName  -- kalau tidak ada night event
     end
 
-    -- Phase & next phase countdown dari Workspace
-    local phase         = Workspace:GetAttribute("ActivePhase")    or "Unknown"
-    local phaseDuration = Workspace:GetAttribute("PhaseDuration")  or 0
-    -- PhaseDuration adalah Unix timestamp kapan phase berikutnya mulai
+    local phase = Workspace:GetAttribute("ActivePhase") or "Unknown"
+    local phaseDuration = Workspace:GetAttribute("PhaseDuration") or 0
     local phaseRemaining = math.max(0, math.floor(phaseDuration - now))
 
     return {
@@ -98,6 +93,8 @@ local function getWeatherData()
         WeatherRemaining = math.max(0, weatherEnd - now),
         PhaseEndTime     = math.floor(phaseDuration),
         PhaseRemaining   = phaseRemaining,
+        -- ↓ Field baru: weather event terpisah dari night event
+        WeatherEvent     = (weatherEventName ~= "None") and weatherEventName or nil,
     }
 end
 
@@ -105,12 +102,13 @@ local lastWeather = getWeatherData()
 
 local function checkWeatherChanged()
     local w = getWeatherData()
-    -- Trigger jika weather ATAU phase berubah
     if w.ActiveWeather ~= lastWeather.ActiveWeather
-    or w.ActivePhase   ~= lastWeather.ActivePhase then
-        local reason = ("Weather: %s→%s | Phase: %s→%s"):format(
+    or w.ActivePhase   ~= lastWeather.ActivePhase
+    or (w.WeatherEvent or "None") ~= (lastWeather.WeatherEvent or "None") then  -- ← tambah ini
+        local reason = ("Weather: %s→%s | Phase: %s→%s | Event: %s→%s"):format(
             tostring(lastWeather.ActiveWeather), tostring(w.ActiveWeather),
-            tostring(lastWeather.ActivePhase),   tostring(w.ActivePhase)
+            tostring(lastWeather.ActivePhase),   tostring(w.ActivePhase),
+            tostring(lastWeather.WeatherEvent),  tostring(w.WeatherEvent)
         )
         lastWeather = w
         return true, reason
