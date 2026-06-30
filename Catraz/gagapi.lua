@@ -1,6 +1,5 @@
--- StockReader_Realtime.lua (+ Weather Detector + Phase Countdown)
--- Loop terus, kirim ke backend HANYA kalau ada perubahan stock ATAU weather
--- Jalankan via Delta / Solara / Executor lainnya
+-- StockReader_Realtime.lua (+ Weather + Phase + Dumper + GUI)
+-- Script otomatis jalan, ramal 10 hari, lalu loop kirim data realtime!
 
 local Players     = game:GetService("Players")
 local lp          = Players.LocalPlayer
@@ -8,34 +7,207 @@ local PlayerGui   = lp:WaitForChild("PlayerGui")
 local HttpService = game:GetService("HttpService")
 local Workspace   = game:GetService("Workspace")
 local RS          = game:GetService("ReplicatedStorage")
+local TS          = game:GetService("TweenService")
+local CoreGui     = pcall(function() return game:GetService("CoreGui") end) and game:GetService("CoreGui") or PlayerGui
 
--- ============================================================
--- CONFIG
--- ============================================================
+local req = (syn and syn.request) or request or http_request or (http and http.request)
 
 local CONFIG = {
-    API_URL         = "http://194.233.73.70:5050/api/stock",
+    API_URL_UPDATE  = "http://194.233.73.70:5050/api/gag2/main/update",
+    API_URL_SCHED   = "http://194.233.73.70:5050/api/gag2/main/schedule",
     API_KEY         = "3ISQ6vScn3dczkNY",
-    SEND_TO_BACKEND = true,
     CHECK_INTERVAL  = 3,
-    DEBUG_LOG       = false,  -- true = spam console tiap cycle, false = hanya perubahan
+    PREDICT_DAYS    = 10, -- Cuma 10 hari biar gak freeze pas inject
 }
 
 -- ============================================================
--- DEFINISI SHOP
+-- GUI SIMPLE & KEREN
+-- ============================================================
+local uiStatus, uiInfo
+
+local function createUI()
+    local sg = Instance.new("ScreenGui")
+    sg.Name = "GraywolfTrackerUI"
+    if CoreGui:FindFirstChild(sg.Name) then CoreGui[sg.Name]:Destroy() end
+    sg.Parent = CoreGui
+    
+    local frame = Instance.new("Frame")
+    frame.Size = UDim2.new(0, 280, 0, 90)
+    frame.Position = UDim2.new(0.5, -140, 0, -100)
+    frame.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
+    frame.BorderSizePixel = 0
+    frame.Parent = sg
+    
+    local uiCorner = Instance.new("UICorner")
+    uiCorner.CornerRadius = UDim.new(0, 10)
+    uiCorner.Parent = frame
+    
+    local uiStroke = Instance.new("UIStroke")
+    uiStroke.Color = Color3.fromRGB(138, 43, 226)
+    uiStroke.Thickness = 2
+    uiStroke.Parent = frame
+    
+    local title = Instance.new("TextLabel")
+    title.Size = UDim2.new(1, 0, 0, 35)
+    title.BackgroundTransparency = 1
+    title.Text = "🐺 GRAYWOLF TRACKER"
+    title.TextColor3 = Color3.fromRGB(255, 255, 255)
+    title.Font = Enum.Font.GothamBold
+    title.TextSize = 16
+    title.Parent = frame
+    
+    local status = Instance.new("TextLabel")
+    status.Size = UDim2.new(1, 0, 0, 20)
+    status.Position = UDim2.new(0, 0, 0, 35)
+    status.BackgroundTransparency = 1
+    status.Text = "Status: Booting..."
+    status.TextColor3 = Color3.fromRGB(0, 255, 127)
+    status.Font = Enum.Font.Gotham
+    status.TextSize = 14
+    status.Parent = frame
+    
+    local info = Instance.new("TextLabel")
+    info.Size = UDim2.new(1, 0, 0, 20)
+    info.Position = UDim2.new(0, 0, 0, 55)
+    info.BackgroundTransparency = 1
+    info.Text = "Initializing modules..."
+    info.TextColor3 = Color3.fromRGB(170, 170, 170)
+    info.Font = Enum.Font.Gotham
+    info.TextSize = 12
+    info.Parent = frame
+    
+    -- Animasi turun dari atas
+    TS:Create(frame, TweenInfo.new(1, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out), {Position = UDim2.new(0.5, -140, 0, 20)}):Play()
+    
+    uiStatus = status
+    uiInfo = info
+end
+
+local function updateUI(st, inf, color)
+    if uiStatus and st then
+        uiStatus.Text = "Status: " .. st
+        if color then uiStatus.TextColor3 = color end
+    end
+    if uiInfo and inf then
+        uiInfo.Text = inf
+    end
+end
+
+-- ============================================================
+-- GENERATE SCHEDULE (DUMPER)
+-- ============================================================
+local function generateAndSendSchedule()
+    updateUI("Predicting...", "Scanning modules for schedule...", Color3.fromRGB(255, 165, 0))
+    local shopArrays = {}
+    local seenArrays = {}
+
+    local function findArraysWithRestockChance(t, path)
+        if type(t) ~= "table" then return end
+        if seenArrays[t] then return end
+        seenArrays[t] = true
+        
+        local isItemArray = false
+        local hasRestockChance = false
+        
+        if t[1] and type(t[1]) == "table" then
+            for _, item in ipairs(t) do
+                if type(item) == "table" and item.RestockChance then
+                    hasRestockChance = true
+                    break
+                end
+            end
+            if hasRestockChance then
+                isItemArray = true
+                table.insert(shopArrays, { Path = path, Items = t })
+            end
+        end
+        
+        if not isItemArray then
+            for k, v in pairs(t) do
+                if type(v) == "table" then
+                    findArraysWithRestockChance(v, path .. "." .. tostring(k))
+                end
+            end
+        end
+    end
+
+    -- Scan semua modul kecuali ExclusiveShopData
+    for _, module in ipairs(RS:WaitForChild("SharedModules"):GetChildren()) do
+        if module:IsA("ModuleScript") and module.Name ~= "ExclusiveShopData" then
+            local success, res = pcall(function() return require(module) end)
+            if success and type(res) == "table" then
+                findArraysWithRestockChance(res, module.Name)
+            end
+        end
+    end
+
+    local OFFSET = -4996
+    local TOTAL_CYCLES = math.floor(CONFIG.PREDICT_DAYS * 24 * 12)
+    local currentTime = os.time()
+    local currentCycle = math.floor(currentTime / 300)
+    local scheduleMap = {}
+
+    for i = 0, TOTAL_CYCLES do
+        local cycleId = currentCycle + i
+        local timestamp = cycleId * 300
+        local shopItems = {}
+        
+        for _, shop in ipairs(shopArrays) do
+            local seed = cycleId + OFFSET
+            local rng = Random.new(seed)
+            for _, item in ipairs(shop.Items) do
+                if type(item) == "table" and item.RestockChance then
+                    local chance = item.RestockChance
+                    local roll = rng:NextInteger(1, 100)
+                    if roll <= chance then
+                        local itemName = item.ItemName or item.Name or item.PackName or item.ID or item.SeedName
+                        if itemName then
+                            table.insert(shopItems, itemName)
+                        end
+                    end
+                end
+            end
+        end
+        
+        if #shopItems > 0 then
+            scheduleMap[tostring(timestamp)] = shopItems
+        end
+    end
+
+    local finalPayload = {
+        ["generatedAt"] = currentTime,
+        ["type"] = "AllShops",
+        ["schedule"] = scheduleMap
+    }
+
+    local jsonOutput = HttpService:JSONEncode(finalPayload)
+    updateUI("Uploading...", "Sending " .. CONFIG.PREDICT_DAYS .. " days schedule...", Color3.fromRGB(0, 200, 255))
+    
+    if req then
+        local res = req({
+            Url = CONFIG.API_URL_SCHED,
+            Method = "POST",
+            Headers = { ["Content-Type"] = "application/json", ["x-api-key"] = CONFIG.API_KEY },
+            Body = jsonOutput
+        })
+        if res and res.StatusCode == 200 then
+            updateUI("Active", "Schedule updated! Listening...", Color3.fromRGB(0, 255, 127))
+        else
+            updateUI("Active", "Schedule upload failed", Color3.fromRGB(255, 50, 50))
+        end
+    end
+end
+
+-- ============================================================
+-- LIVE TRACKER MODULES
 -- ============================================================
 
 local SHOPS = {
     { name = "SeedShop_Normal",    path = {"SeedShop", "Frame", "NormalShop"}      },
-    { name = "SeedShop_Exclusive", path = {"SeedShop", "Frame", "ExclusiveShop"}   },
+    -- { name = "SeedShop_Exclusive", path = {"SeedShop", "Frame", "ExclusiveShop"}   }, -- DIHAPUS (Request User)
     { name = "GearShop",           path = {"GearShop",  "Frame", "ScrollingFrame"} },
     { name = "CrateShop",          path = {"CrateShop", "Frame", "ScrollingFrame"} },
 }
-
--- ============================================================
--- WEATHER: Baca dari ReplicatedStorage.WeatherValues
--- PhaseDuration = Unix timestamp kapan phase berikutnya mulai
--- ============================================================
 
 local WeatherValues = RS:WaitForChild("WeatherValues", 10)
 local WEATHER_NAMES = {"Rain", "Lightning", "Rainbow", "Snowfall", "Starfall"}
@@ -44,19 +216,16 @@ local function getWeatherData()
     local now = DateTime.now().UnixTimestamp
     local activeWeather = "None"
     local weatherEnd = 0
-    local weatherEventName = "None"  -- ← tambah ini
+    local weatherEventName = "None"
 
-    -- Cek WeatherValues (Rain/Lightning/Rainbow/dll)
     if WeatherValues then
         for _, name in ipairs(WEATHER_NAMES) do
-            local playing = WeatherValues:GetAttribute(name .. "_Playing")
-            if playing == true then
-                weatherEventName = name  -- simpan ke variable terpisah
+            if WeatherValues:GetAttribute(name .. "_Playing") == true then
+                weatherEventName = name
                 weatherEnd = WeatherValues:GetAttribute(name .. "_EndTime") or 0
                 break
             end
         end
-
         if weatherEventName == "None" then
             for _, folder in ipairs(WeatherValues:GetChildren()) do
                 local bv = folder:FindFirstChild("Playing")
@@ -70,16 +239,11 @@ local function getWeatherData()
         end
     end
 
-    -- Night event dari Workspace
-    local NIGHT_EVENTS = {
-        ["Bloodmoon"] = true, ["Goldmoon"] = true,
-        ["Rainbow Moon"] = true, ["Chained Moon"] = true, ["Pizza Moon"] = true,
-    }
     local wsWeather = Workspace:GetAttribute("ActiveWeather")
-    if wsWeather and NIGHT_EVENTS[wsWeather] then
-        activeWeather = wsWeather  -- night event jadi ActiveWeather
+    if wsWeather and wsWeather:find("Moon") then
+        activeWeather = wsWeather
     elseif weatherEventName ~= "None" then
-        activeWeather = weatherEventName  -- kalau tidak ada night event
+        activeWeather = weatherEventName
     end
 
     local phase = Workspace:GetAttribute("ActivePhase") or "Unknown"
@@ -93,7 +257,6 @@ local function getWeatherData()
         WeatherRemaining = math.max(0, weatherEnd - now),
         PhaseEndTime     = math.floor(phaseDuration),
         PhaseRemaining   = phaseRemaining,
-        -- ↓ Field baru: weather event terpisah dari night event
         WeatherEvent     = (weatherEventName ~= "None") and weatherEventName or nil,
     }
 end
@@ -104,38 +267,28 @@ local function checkWeatherChanged()
     local w = getWeatherData()
     if w.ActiveWeather ~= lastWeather.ActiveWeather
     or w.ActivePhase   ~= lastWeather.ActivePhase
-    or (w.WeatherEvent or "None") ~= (lastWeather.WeatherEvent or "None") then  -- ← tambah ini
-        local reason = ("Weather: %s→%s | Phase: %s→%s | Event: %s→%s"):format(
-            tostring(lastWeather.ActiveWeather), tostring(w.ActiveWeather),
-            tostring(lastWeather.ActivePhase),   tostring(w.ActivePhase),
-            tostring(lastWeather.WeatherEvent),  tostring(w.WeatherEvent)
-        )
+    or (w.WeatherEvent or "None") ~= (lastWeather.WeatherEvent or "None") then
         lastWeather = w
-        return true, reason
+        return true
     end
-    return false, nil
+    return false
 end
 
--- ============================================================
--- HELPER: Parse stock & cost
--- ============================================================
-
-local function parseStock(stockText)
-    if stockText == nil then return 0 end
-    local t = stockText:lower()
+local function parseStock(t)
+    if not t then return 0 end
+    t = t:lower()
     if t:find("not owned")  then return "not_owned"  end
     if t:find("^owned")     then return "owned"       end
     if t:find("unequipped") then return "unequipped"  end
     if t:find("equipped")   then return "equipped"    end
     if t:find("no stock")   then return 0             end
-    local n = stockText:match("x(%d+)")
-    if n then return tonumber(n) end
-    return 0
+    local n = t:match("x(%d+)")
+    return n and tonumber(n) or 0
 end
 
-local function parseCost(costText)
-    if costText == nil or costText == "N/A" or costText == "NO STOCK" then return nil end
-    local clean = costText:gsub("%¢",""):gsub(",",""):gsub("%s","")
+local function parseCost(t)
+    if not t or t == "N/A" or t == "NO STOCK" then return nil end
+    local clean = t:gsub("%¢",""):gsub(",",""):gsub("%s","")
     local num, suffix = clean:match("^([%d%.]+)([KkMmBb]?)$")
     if not num then return nil end
     num = tonumber(num)
@@ -146,11 +299,6 @@ local function parseCost(costText)
     return num
 end
 
--- ============================================================
--- BACA SATU SCROLLINGFRAME
--- BUG FIX: stockVal → stockVal didefinisikan dari parseStock()
--- ============================================================
-
 local function readScrollingFrame(sf)
     local items = {}
     for _, item in ipairs(sf:GetChildren()) do
@@ -158,14 +306,12 @@ local function readScrollingFrame(sf)
             local seedText  = item:FindFirstChild("Seed_Text",  true)
             local costText  = item:FindFirstChild("Cost_Text",  true)
             local stockText = item:FindFirstChild("Stock_Text", true)
-
             if seedText or costText then
-                local name     = seedText and seedText.Text or item.Name
-                local costRaw  = costText  and costText.Text  or "N/A"
+                local name = seedText and seedText.Text or item.Name
+                local costRaw = costText and costText.Text or "N/A"
                 local stockRaw = stockText and stockText.Text or "N/A"
-
                 if name ~= "" and name ~= "Seed_Text" then
-                    local stockVal = parseStock(stockRaw)  -- FIX: dulu stockVal tidak didefinisikan
+                    local stockVal = parseStock(stockRaw)
                     table.insert(items, {
                         name     = name,
                         cost_raw = costRaw,
@@ -180,10 +326,6 @@ local function readScrollingFrame(sf)
     return items
 end
 
--- ============================================================
--- BACA SEMUA SHOP
--- ============================================================
-
 local function readAllShops()
     local allShops = {}
     for _, shopDef in ipairs(SHOPS) do
@@ -194,7 +336,6 @@ local function readAllShops()
             if not found then ok = false break end
             current = found
         end
-
         if ok and (current:IsA("ScrollingFrame") or current:IsA("Frame")) then
             allShops[shopDef.name] = readScrollingFrame(current)
         else
@@ -204,23 +345,13 @@ local function readAllShops()
     return allShops
 end
 
--- ============================================================
--- DIFF: Cek perubahan stock
--- ============================================================
-
-local function snapshotKey(shopName, item)
-    return shopName .. "|" .. tostring(item.name)
-end
-
 local function buildSnapshotMap(allShops)
     local map = {}
-    for shopName, items in pairs(allShops) do
+    for sn, items in pairs(allShops) do
         for _, item in ipairs(items) do
-            local key = snapshotKey(shopName, item)
-            map[key] = {
-                stock    = tostring(item.stock),
-                cost_raw = item.cost_raw,
-                in_stock = item.in_stock,
+            map[sn .. "|" .. tostring(item.name)] = {
+                stock = tostring(item.stock),
+                cost_raw = item.cost_raw
             }
         end
     end
@@ -228,171 +359,59 @@ local function buildSnapshotMap(allShops)
 end
 
 local function hasChanged(oldMap, newMap)
-    for key, newVal in pairs(newMap) do
-        local oldVal = oldMap[key]
-        if not oldVal then
-            return true, ("Item baru: %s"):format(key)
-        end
-        if oldVal.stock ~= newVal.stock then
-            return true, ("Stock berubah [%s]: %s → %s"):format(key, oldVal.stock, newVal.stock)
-        end
-        if oldVal.cost_raw ~= newVal.cost_raw then
-            return true, ("Harga berubah [%s]: %s → %s"):format(key, oldVal.cost_raw, newVal.cost_raw)
-        end
+    for k, nv in pairs(newMap) do
+        local ov = oldMap[k]
+        if not ov or ov.stock ~= nv.stock or ov.cost_raw ~= nv.cost_raw then return true end
     end
-    for key in pairs(oldMap) do
-        if not newMap[key] then
-            return true, ("Item hilang: %s"):format(key)
-        end
+    for k in pairs(oldMap) do
+        if not newMap[k] then return true end
     end
-    return false, nil
+    return false
 end
 
--- ============================================================
--- KIRIM KE BACKEND
--- ============================================================
-
-local function sendToBackend(allShops, weather)
-    local payload = {
+local function sendLiveUpdate(allShops, weather)
+    local payload = HttpService:JSONEncode({
         timestamp = os.time(),
         player    = lp.Name,
         weather   = weather,
         shops     = allShops,
-    }
-
-    local ok, jsonStr = pcall(function()
-        return HttpService:JSONEncode(payload)
-    end)
-    if not ok then
-        print("❌ Gagal encode JSON:", jsonStr)
-        return false
-    end
-
-    -- Primary: request()
-    local sendOk, result = pcall(function()
-        return request({
-            Url     = CONFIG.API_URL,
-            Method  = "POST",
+    })
+    
+    if req then
+        req({
+            Url = CONFIG.API_URL_UPDATE,
+            Method = "POST",
             Headers = { ["Content-Type"] = "application/json", ["x-api-key"] = CONFIG.API_KEY },
-            Body    = jsonStr,
+            Body = payload,
         })
-    end)
-    if sendOk and result then
-        if result.StatusCode == 200 then
-            print(("✅ Dikirim! %s"):format(tostring(result.Body):sub(1, 80)))
-            return true
-        else
-            print(("⚠️ Server error %d: %s"):format(result.StatusCode, tostring(result.Body):sub(1, 80)))
-            return false
-        end
     end
-
-    -- Fallback: syn.request
-    local fallOk, fallResult = pcall(function()
-        return syn.request({
-            Url     = CONFIG.API_URL,
-            Method  = "POST",
-            Headers = { ["Content-Type"] = "application/json", ["x-api-key"] = CONFIG.API_KEY },
-            Body    = jsonStr,
-        })
-    end)
-    if fallOk and fallResult and fallResult.StatusCode == 200 then
-        print("✅ Dikirim (fallback)!")
-        return true
-    end
-
-    print("❌ Gagal kirim. Check koneksi / URL backend.")
-    return false
 end
 
 -- ============================================================
--- MAIN LOOP
+-- STARTUP
 -- ============================================================
+createUI()
 
-print("\n" .. string.rep("=", 50))
-print("  STOCK + WEATHER TRACKER REAL-TIME")
-print("  Interval cek: " .. CONFIG.CHECK_INTERVAL .. " detik")
-print(string.rep("=", 50) .. "\n")
+-- Jalankan dumper jadwal (10 hari) secara terpisah agar tidak freeze main thread
+task.spawn(generateAndSendSchedule)
 
-local lastSnapshotMap = {}
-local cycleCount = 0
-local sentCount  = 0
+local lastSnapshotMap = buildSnapshotMap(readAllShops())
+local sentCount = 0
 
-do
-    print("[Init] Baca data pertama kali...")
-    local initialShops   = readAllShops()
-    local initialWeather = getWeatherData()
-    lastSnapshotMap = buildSnapshotMap(initialShops)
-    lastWeather     = initialWeather
-
-    local totalItems = 0
-    for _, items in pairs(initialShops) do totalItems = totalItems + #items end
-
-    local now = DateTime.now().UnixTimestamp
-    print(("[Init] %d item | Weather: %s | Phase: %s | Phase ganti dalam: %ds"):format(
-        totalItems,
-        initialWeather.ActiveWeather,
-        initialWeather.ActivePhase,
-        initialWeather.PhaseRemaining
-    ))
-    if initialWeather.ActiveWeather ~= "None" then
-        print(("[Init] %s berakhir dalam: %ds"):format(
-            initialWeather.ActiveWeather, initialWeather.WeatherRemaining))
-    end
-
-    if CONFIG.SEND_TO_BACKEND then
-        sendToBackend(initialShops, initialWeather)
-        sentCount = sentCount + 1
-    end
-end
-
+-- Main Loop (Live Tracker)
 while true do
     task.wait(CONFIG.CHECK_INTERVAL)
-    cycleCount = cycleCount + 1
-
-    local currentShops   = readAllShops()
-    local currentMap     = buildSnapshotMap(currentShops)
-    local currentWeather = getWeatherData()
-
-    local stockChange, sreason = hasChanged(lastSnapshotMap, currentMap)
-    local wChange,     wreason = checkWeatherChanged()
-
+    local currentShops = readAllShops()
+    local currentMap = buildSnapshotMap(currentShops)
+    local cw = getWeatherData()
+    
+    local stockChange = hasChanged(lastSnapshotMap, currentMap)
+    local wChange = checkWeatherChanged()
+    
     if stockChange or wChange then
-        local t = os.date("%H:%M:%S")
-        if stockChange then print(("[%s] 🔄 %s"):format(t, sreason)) end
-        if wChange     then
-            print(("[%s] 🌤️  %s"):format(t, wreason))
-            -- Tampilkan countdown weather baru jika aktif
-            if currentWeather.ActiveWeather ~= "None" then
-                print(("        ⏱️ Berakhir dalam: %ds (EndTime: %d)"):format(
-                    currentWeather.WeatherRemaining, currentWeather.WeatherEndTime))
-            end
-            print(("        🌅 Phase ganti dalam: %ds"):format(currentWeather.PhaseRemaining))
-        end
-
-        if CONFIG.SEND_TO_BACKEND then
-            local ok = sendToBackend(currentShops, currentWeather)
-            if ok then
-                sentCount = sentCount + 1
-                lastSnapshotMap = currentMap
-            end
-        else
-            lastSnapshotMap = currentMap
-            local _, jsonStr = pcall(function()
-                return HttpService:JSONEncode({
-                    timestamp = os.time(),
-                    player    = lp.Name,
-                    weather   = currentWeather,
-                    shops     = currentShops,
-                })
-            end)
-            print("JSON:", jsonStr)
-        end
-    else
-        if CONFIG.DEBUG_LOG then
-            local w = currentWeather
-            print(("[Cycle %d] Tidak ada perubahan | Weather: %s | Phase selesai: %ds"):format(
-                cycleCount, w.ActiveWeather, w.PhaseRemaining))
-        end
+        sendLiveUpdate(currentShops, cw)
+        lastSnapshotMap = currentMap
+        sentCount = sentCount + 1
+        updateUI("Active", "Sent live updates: " .. sentCount, Color3.fromRGB(0, 255, 127))
     end
 end
