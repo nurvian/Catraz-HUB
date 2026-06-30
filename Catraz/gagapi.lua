@@ -1,4 +1,4 @@
--- StockReader_Realtime.lua (+ Weather + Phase + Dumper + GUI)
+-- StockReader_Realtime.lua (+ Weather + Phase + Dumper + GUI + Anti-AFK)
 -- Script otomatis jalan, ramal 10 hari, lalu loop kirim data realtime!
 
 local Players     = game:GetService("Players")
