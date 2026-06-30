@@ -392,6 +392,14 @@ end
 -- ============================================================
 createUI()
 
+-- Anti-AFK agar tidak ditendang setelah 20 menit diam
+local VirtualUser = game:GetService("VirtualUser")
+lp.Idled:Connect(function()
+    VirtualUser:CaptureController()
+    VirtualUser:ClickButton2(Vector2.new())
+    updateUI(nil, "Anti-AFK trigered, keeping connection alive.", Color3.fromRGB(0, 200, 255))
+end)
+
 -- Jalankan dumper jadwal (10 hari) secara terpisah agar tidak freeze main thread
 task.spawn(generateAndSendSchedule)
 
