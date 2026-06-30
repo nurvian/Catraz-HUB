@@ -1,4 +1,4 @@
--- StockReader_Realtime.lua (+ Weather + Phase + Dumper + GUI + Anti-AFK)
+-- StockReader_Realtime.lua (+ Weather + Phase + Dumper + GUI + Fix)
 -- Script otomatis jalan, ramal 10 hari, lalu loop kirim data realtime!
 
 local Players     = game:GetService("Players")
@@ -150,11 +150,16 @@ local function generateAndSendSchedule()
     for i = 0, TOTAL_CYCLES do
         local cycleId = currentCycle + i
         local timestamp = cycleId * 300
-        local shopItems = {}
+        
+        local cycleShops = {}
+        local hasItems = false
         
         for _, shop in ipairs(shopArrays) do
+            local shopName = shop.Path -- Nama modul (GearShop, CrateShop, dll)
             local seed = cycleId + OFFSET
             local rng = Random.new(seed)
+            local itemsThisShop = {}
+            
             for _, item in ipairs(shop.Items) do
                 if type(item) == "table" and item.RestockChance then
                     local chance = item.RestockChance
@@ -162,15 +167,20 @@ local function generateAndSendSchedule()
                     if roll <= chance then
                         local itemName = item.ItemName or item.Name or item.PackName or item.ID or item.SeedName
                         if itemName then
-                            table.insert(shopItems, itemName)
+                            table.insert(itemsThisShop, itemName)
                         end
                     end
                 end
             end
+            
+            if #itemsThisShop > 0 then
+                cycleShops[shopName] = itemsThisShop
+                hasItems = true
+            end
         end
         
-        if #shopItems > 0 then
-            scheduleMap[tostring(timestamp)] = shopItems
+        if hasItems then
+            scheduleMap[tostring(timestamp)] = cycleShops
         end
     end
 
@@ -403,8 +413,14 @@ end)
 -- Jalankan dumper jadwal (10 hari) secara terpisah agar tidak freeze main thread
 task.spawn(generateAndSendSchedule)
 
-local lastSnapshotMap = buildSnapshotMap(readAllShops())
-local sentCount = 0
+-- Initial Load (Kirim data pertama kali saat script dijalankan)
+local initialShops = readAllShops()
+local initialWeather = getWeatherData()
+local lastSnapshotMap = buildSnapshotMap(initialShops)
+local sentCount = 1
+
+sendLiveUpdate(initialShops, initialWeather)
+updateUI("Active", "Sent initial data to backend!", Color3.fromRGB(0, 255, 127))
 
 -- Main Loop (Live Tracker)
 while true do
